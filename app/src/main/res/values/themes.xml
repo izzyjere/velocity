@@ -8,6 +8,10 @@
         <item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">true</item><item name="android:navigationBarColor">@color/surface</item>
     </style>
     <style name="Theme.DownloadManager" parent="Base.Theme.DownloadManager" />
+    <style name="TextAppearance.Velocity.Toolbar.Title" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textSize">24sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
     <style name="Theme.DownloadManager.Transparent" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowIsTranslucent">true</item><item name="android:windowBackground">@android:color/transparent</item>
     </style>

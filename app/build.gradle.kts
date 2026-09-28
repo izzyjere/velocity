@@ -5,6 +5,19 @@ plugins {
 
 room { schemaDirectory("$projectDir/schemas") }
 
+val configuredVersionName = providers.gradleProperty("versionName").orElse("1.0.0")
+val configuredVersionCode = providers.gradleProperty("versionCode").map(String::toInt).orElse(1_000_000)
+val releaseStoreFile = System.getenv("VELOCITY_SIGNING_STORE_FILE")
+val releaseStorePassword = System.getenv("VELOCITY_SIGNING_STORE_PASSWORD")
+val releaseKeyAlias = System.getenv("VELOCITY_SIGNING_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("VELOCITY_SIGNING_KEY_PASSWORD")
+val releaseSigningValues = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+val hasReleaseSigning = releaseSigningValues.all { !it.isNullOrBlank() }
+
+if (releaseSigningValues.any { !it.isNullOrBlank() } && !hasReleaseSigning) {
+    throw GradleException("Release signing is only partially configured; all VELOCITY_SIGNING_* values are required")
+}
+
 android {
     namespace = "zm.co.codelabs.adm"
     compileSdk {
@@ -17,16 +30,31 @@ android {
         applicationId = "zm.co.codelabs.adm"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = configuredVersionCode.get()
+        versionName = configuredVersionName.get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -39,6 +67,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     sourceSets.getByName("androidTest").assets.setSrcDirs(listOf("$projectDir/schemas"))
+}
+
+tasks.register("verifyReleaseSigningConfiguration") {
+    doLast {
+        check(hasReleaseSigning) { "Release signing is not configured. Set all VELOCITY_SIGNING_* environment variables." }
+        check(file(releaseStoreFile!!).isFile) { "Release keystore does not exist: $releaseStoreFile" }
+    }
 }
 
 dependencies {

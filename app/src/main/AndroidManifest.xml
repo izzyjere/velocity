@@ -21,6 +21,10 @@
             android:theme="@style/Theme.DownloadManager"
             android:usesCleartextTraffic="false">
 
+        <meta-data android:name="zm.co.codelabs.adm.DEVELOPER" android:value="Wisdom Jere" />
+        <meta-data android:name="zm.co.codelabs.adm.ORGANIZATION" android:value="Codelabs Zambia" />
+        <meta-data android:name="zm.co.codelabs.adm.GITHUB" android:value="https://github.com/izzyjere" />
+
         <activity android:name=".interceptor.LinkRouterActivity" android:exported="true" android:noHistory="true" android:theme="@style/Theme.DownloadManager.Transparent">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

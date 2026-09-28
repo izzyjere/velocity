@@ -13,5 +13,8 @@
         </com.google.android.material.textfield.TextInputLayout>
         <com.google.android.material.button.MaterialButton android:id="@+id/save" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="16dp" android:text="@string/save_settings" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/security_summary" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:text="@string/about_title" android:textAppearance="?attr/textAppearanceTitleLarge" android:textStyle="bold" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/developer_details" android:textAppearance="?attr/textAppearanceBodyLarge" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/github" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_marginTop="4dp" android:text="@string/github_profile" />
     </LinearLayout>
 </ScrollView>

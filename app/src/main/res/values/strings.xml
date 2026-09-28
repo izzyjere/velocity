@@ -16,5 +16,8 @@
     <string name="app_download_destination">Destination: App downloads</string><string name="connections">Connections</string><string name="start_download">Start download</string><string name="add_to_queue">Add to queue</string>
     <string name="browser_render_failure">Browser process restarted after a rendering failure</string>
     <string name="adaptive_ready">Adaptive acceleration ready</string>
+    <string name="about_title">About Velocity</string>
+    <string name="developer_details">Developed by Wisdom Jere\nCodelabs Zambia</string>
+    <string name="github_profile">GitHub: @izzyjere</string>
     <plurals name="active_downloads"><item quantity="one">%1$d active • %2$s</item><item quantity="other">%1$d active • %2$s</item></plurals>
 </resources>

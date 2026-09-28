@@ -8,7 +8,6 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.EditText;
 import android.widget.PopupMenu;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -28,6 +27,7 @@ import java.util.concurrent.Executors;
 import zm.co.codelabs.adm.App;
 import zm.co.codelabs.adm.data.db.entity.DownloadEntity;
 import zm.co.codelabs.adm.databinding.FragmentDownloadsBinding;
+import zm.co.codelabs.adm.databinding.DialogTextInputBinding;
 import zm.co.codelabs.adm.platform.service.DownloadExecution;
 
 public final class DownloadsFragment extends Fragment implements DownloadAdapter.Actions {
@@ -81,15 +81,18 @@ public final class DownloadsFragment extends Fragment implements DownloadAdapter
         }
     }
     private void editNumber(DownloadEntity item, boolean speed) {
-        EditText input = new EditText(requireContext()); input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); input.setText(String.valueOf(speed ? item.speedLimit / 1024 : item.maxConnections)); input.setMinHeight(dp(56));
-        new MaterialAlertDialogBuilder(requireContext()).setTitle(speed ? "Speed limit in KB/s (0 unlimited)" : "Maximum connections (1–16)").setView(input).setNegativeButton("Cancel", null).setPositiveButton("Save", (d, w) -> IO.execute(() -> {
-            try { long value = Long.parseLong(input.getText().toString()); if (speed) item.speedLimit = Math.max(0, value) * 1024; else item.maxConnections = (int) Math.max(1, Math.min(16, value)); app().repository().update(item); } catch (NumberFormatException ignored) { }
+        DialogTextInputBinding field = DialogTextInputBinding.inflate(getLayoutInflater());
+        field.inputLayout.setHint(speed ? "Speed limit (KB/s)" : "Connections (1–16)");
+        field.input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); field.input.setText(String.valueOf(speed ? item.speedLimit / 1024 : item.maxConnections)); field.input.setSelectAllOnFocus(true);
+        new MaterialAlertDialogBuilder(requireContext()).setTitle(speed ? "Set speed limit" : "Set connection limit").setView(field.getRoot()).setNegativeButton("Cancel", null).setPositiveButton("Save", (d, w) -> IO.execute(() -> {
+            try { long value = Long.parseLong(String.valueOf(field.input.getText())); if (speed) item.speedLimit = Math.max(0, value) * 1024; else item.maxConnections = (int) Math.max(1, Math.min(16, value)); app().repository().update(item); } catch (NumberFormatException ignored) { }
         })).show();
     }
     private void rename(DownloadEntity item) {
-        EditText input = new EditText(requireContext()); input.setText(item.fileName); input.setSelectAllOnFocus(true); input.setMinHeight(dp(56));
-        new MaterialAlertDialogBuilder(requireContext()).setTitle("Rename download").setView(input).setNegativeButton("Cancel", null).setPositiveButton("Rename", (d, w) -> IO.execute(() -> {
-            try { File old = new File(item.destination), partial = new File(item.destination + ".part"), target = app().destinations().uniqueFile(input.getText().toString()); if (old.exists() && !old.renameTo(target)) throw new Exception("Rename failed"); if (partial.exists() && !partial.renameTo(new File(target + ".part"))) throw new Exception("Partial file rename failed"); item.fileName = target.getName(); item.destination = target.getPath(); app().repository().update(item); }
+        DialogTextInputBinding field = DialogTextInputBinding.inflate(getLayoutInflater());
+        field.inputLayout.setHint("File name"); field.input.setText(item.fileName); field.input.setSelectAllOnFocus(true);
+        new MaterialAlertDialogBuilder(requireContext()).setTitle("Rename download").setView(field.getRoot()).setNegativeButton("Cancel", null).setPositiveButton("Rename", (d, w) -> IO.execute(() -> {
+            try { File old = new File(item.destination), partial = new File(item.destination + ".part"), target = app().destinations().uniqueFile(String.valueOf(field.input.getText())); if (old.exists() && !old.renameTo(target)) throw new Exception("Rename failed"); if (partial.exists() && !partial.renameTo(new File(target + ".part"))) throw new Exception("Partial file rename failed"); item.fileName = target.getName(); item.destination = target.getPath(); app().repository().update(item); }
             catch (Exception e) { toast(e.getMessage()); }
         })).show();
     }
@@ -100,6 +103,5 @@ public final class DownloadsFragment extends Fragment implements DownloadAdapter
     private long remaining(DownloadEntity item) { return item.totalBytes > 0 ? Math.max(0, item.totalBytes - item.completedBytes) : -1; }
     private App app() { return application; }
     private void toast(String text) { if (isAdded()) requireActivity().runOnUiThread(() -> Toast.makeText(requireContext(), text, Toast.LENGTH_SHORT).show()); }
-    private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density); }
     @Override public void onDestroyView() { binding = null; super.onDestroyView(); }
 }

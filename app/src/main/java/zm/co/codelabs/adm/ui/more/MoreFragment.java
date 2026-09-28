@@ -1,6 +1,8 @@
 package zm.co.codelabs.adm.ui.more;
 
 import android.content.SharedPreferences;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -22,6 +24,7 @@ public final class MoreFragment extends Fragment {
         binding.connections.addOnChangeListener((slider, value, user) -> { int count = (int) value; binding.connectionsValue.setText(getResources().getQuantityString(R.plurals.connection_count, count, count)); }); binding.wifiOnly.setChecked(prefs.getBoolean("wifi_only", false));
         binding.darkTheme.setChecked(prefs.getBoolean("dark_theme", false)); long bytes = prefs.getLong("speed_limit", 0); binding.speedLimit.setText(String.valueOf(bytes / 1024));
         binding.save.setOnClickListener(v -> save());
+        binding.github.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/izzyjere"))));
     }
     private void save() {
         long kb; try { kb = Long.parseLong(binding.speedLimit.getText() == null ? "0" : binding.speedLimit.getText().toString()); } catch (NumberFormatException e) { kb = 0; }

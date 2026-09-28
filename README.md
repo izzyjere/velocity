@@ -2,6 +2,16 @@
 
 Velocity is a Java-only Android download manager for Android 8.0+ (API 26). It uses native Views and Material 3, Room-backed recovery, a secured WebView browser, user-consented share/open-with interception, and an adaptive multipart engine optimized for useful end-to-end throughput.
 
+Developed by **Wisdom Jere** at **Codelabs Zambia**. GitHub: [@izzyjere](https://github.com/izzyjere).
+
+## Releases
+
+Version tags build, verify, sign, and publish an APK named `velocity-{version}.apk`. Release signing credentials are stored only as encrypted GitHub Actions secrets; keystores and local signing configuration are excluded from source control.
+
+[Download the latest release](https://github.com/izzyjere/velocity/releases/latest)
+
+Maintainer instructions and the signing-certificate fingerprint are documented in [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Engine design
 
 The transfer path is isolated from Activities and Fragments:

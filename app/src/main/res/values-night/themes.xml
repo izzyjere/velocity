@@ -1,0 +1,10 @@
+<resources>
+    <style name="Base.Theme.DownloadManager" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#65DBB4</item><item name="colorOnPrimary">#003829</item>
+        <item name="colorPrimaryContainer">#00513D</item><item name="colorOnPrimaryContainer">#85F8CF</item>
+        <item name="colorSecondary">#B3CCBF</item><item name="colorSurface">#101412</item>
+        <item name="colorOnSurface">#E1E3DF</item><item name="colorOnSurfaceVariant">#BFC9C2</item>
+        <item name="colorOutline">#89938D</item><item name="colorError">#FFB4AB</item><item name="colorOnError">#690005</item>
+        <item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">false</item><item name="android:navigationBarColor">#101412</item>
+    </style>
+</resources>

@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Velocity</string><string name="downloads">Downloads</string>
+    <string name="browser">Browser</string><string name="files">Files</string><string name="queue">Queue</string><string name="more">More</string>
+    <string name="add_download">Add download</string>
+    <string name="notification_channel_downloads">Active downloads</string>
+    <string name="notification_channel_description">Progress and controls for active downloads</string>
+    <string name="ready">Ready</string><string name="web_address">Web address</string><string name="go">Go</string>
+    <string name="filter_all">All</string><string name="filter_active">Active</string><string name="filter_complete">Complete</string><string name="filter_failed">Failed</string>
+    <string name="downloads_empty">No downloads yet\nTap + or share a link to get started</string><string name="files_empty">No completed files</string><string name="queue_empty">Queue is empty</string><string name="nothing_here">Nothing here</string>
+    <string name="download_settings">Download settings</string><string name="wifi_default">Wi-Fi only by default</string><string name="wifi_only">Wi-Fi only</string><string name="dark_theme">Dark theme</string>
+    <string name="max_connections">Maximum connections (Auto ceiling)</string>
+    <plurals name="connection_count"><item quantity="one">%1$d connection</item><item quantity="other">%1$d connections</item></plurals>
+    <string name="global_speed_limit">Global speed limit (0 = unlimited)</string><string name="kb_per_second">KB/s</string><string name="save_settings">Save settings</string>
+    <string name="security_summary">Velocity uses adaptive multipart downloads, verified resume, HTTP/2 and HTTP/3 when available. Downloaded content is untrusted; open files only when you trust their source.</string>
+    <string name="pause">Pause</string><string name="actions">Actions</string><string name="download_url">Download URL</string><string name="file_name">File name</string>
+    <string name="app_download_destination">Destination: App downloads</string><string name="connections">Connections</string><string name="start_download">Start download</string><string name="add_to_queue">Add to queue</string>
+    <string name="browser_render_failure">Browser process restarted after a rendering failure</string>
+    <string name="adaptive_ready">Adaptive acceleration ready</string>
+    <plurals name="active_downloads"><item quantity="one">%1$d active • %2$s</item><item quantity="other">%1$d active • %2$s</item></plurals>
+</resources>

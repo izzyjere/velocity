@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/download_settings" android:textAppearance="?attr/textAppearanceHeadlineSmall" android:layout_marginBottom="12dp" />
+        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/wifi_only" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/wifi_default" />
+        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/dark_theme" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/dark_theme" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/max_connections" android:textAppearance="?attr/textAppearanceTitleMedium" />
+        <com.google.android.material.slider.Slider android:id="@+id/connections" android:layout_width="match_parent" android:layout_height="wrap_content" android:valueFrom="1" android:valueTo="16" android:stepSize="1" />
+        <TextView android:id="@+id/connections_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/connections" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="@string/global_speed_limit" android:textAppearance="?attr/textAppearanceTitleMedium" />
+        <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/kb_per_second">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/speed_limit" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="number" android:singleLine="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.button.MaterialButton android:id="@+id/save" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="16dp" android:text="@string/save_settings" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/security_summary" android:textAppearance="?attr/textAppearanceBodyMedium" />
+    </LinearLayout>
+</ScrollView>

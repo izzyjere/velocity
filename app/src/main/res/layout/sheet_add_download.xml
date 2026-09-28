@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="24dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/add_download" android:textAppearance="?attr/textAppearanceHeadlineSmall" />
+        <com.google.android.material.textfield.TextInputLayout android:id="@+id/url_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:hint="@string/download_url">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/url" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textUri" android:maxLines="4" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.textfield.TextInputLayout android:id="@+id/name_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:hint="@string/file_name">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/name" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text" android:singleLine="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <TextView android:id="@+id/destination" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/app_download_destination" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:hint="@string/connections" style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/connections" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/wifi_only" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/wifi_only" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/start" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="16dp" android:text="@string/start_download" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/queue" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="8dp" android:text="@string/add_to_queue" />
+    </LinearLayout>
+</ScrollView>

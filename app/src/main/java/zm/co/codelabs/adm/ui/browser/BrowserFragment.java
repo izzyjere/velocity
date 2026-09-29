@@ -105,8 +105,8 @@ public final class BrowserFragment extends Fragment {
     }
     private void updateMediaButton(String pageUrl) {
         if (binding == null) return; int count = mediaCandidates.size();
-        boolean restrictedPage = MediaDiscovery.isRestrictedPlatformPage(pageUrl);
-        binding.mediaDownload.setVisibility(count > 0 || restrictedPage ? View.VISIBLE : View.GONE);
+        boolean mediaPage = MediaDiscovery.isMediaPageUrl(pageUrl);
+        binding.mediaDownload.setVisibility(count > 0 || mediaPage ? View.VISIBLE : View.GONE);
         String description = count > 0 ? getResources().getQuantityString(R.plurals.downloadable_media_count, count, count) : getString(R.string.download_media);
         binding.mediaDownload.setContentDescription(description);
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.mediaDownload, description);

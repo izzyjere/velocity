@@ -2,7 +2,6 @@ package zm.co.codelabs.adm.transport.okhttp;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -10,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 import okhttp3.Call;
 import okhttp3.ConnectionPool;
 import okhttp3.Headers;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -67,15 +67,16 @@ public final class OkHttpTransport implements TransportClient {
         throw new IOException("Too many redirects");
     }
     private static boolean sensitive(String name) { return name.equalsIgnoreCase("Authorization") || name.equalsIgnoreCase("Proxy-Authorization") || name.equalsIgnoreCase("Cookie"); }
-    private static boolean sameOrigin(String first, String second) { URI a = URI.create(first), b = URI.create(second); return a.getScheme().equalsIgnoreCase(b.getScheme()) && a.getHost().equalsIgnoreCase(b.getHost()) && effectivePort(a) == effectivePort(b); }
-    private static int effectivePort(URI uri) { return uri.getPort() >= 0 ? uri.getPort() : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80); }
+    private static boolean sameOrigin(String first, String second) {
+        HttpUrl a = HttpUrl.get(first), b = HttpUrl.get(second);
+        return a.scheme().equalsIgnoreCase(b.scheme()) && a.host().equalsIgnoreCase(b.host()) && a.port() == b.port();
+    }
     private static String first(Map<String, List<String>> headers, String name) { for (Map.Entry<String, List<String>> e : headers.entrySet()) if (e.getKey().equalsIgnoreCase(name) && !e.getValue().isEmpty()) return e.getValue().get(0); return null; }
     private static long totalFromRange(String value) { try { return Long.parseLong(value.substring(value.indexOf('/') + 1)); } catch (RuntimeException e) { return -1; } }
     private static Request.Builder requestBuilder(String url, Map<String, String> headers) {
         Request.Builder builder = new Request.Builder().url(url);
-        URI origin = URI.create(url);
         headers.forEach((name, value) -> {
-            if (!name.equalsIgnoreCase("Host") && !name.equalsIgnoreCase("Content-Length") && origin.getHost() != null) builder.header(name, value);
+            if (!name.equalsIgnoreCase("Host") && !name.equalsIgnoreCase("Content-Length")) builder.header(name, value);
         });
         return builder;
     }

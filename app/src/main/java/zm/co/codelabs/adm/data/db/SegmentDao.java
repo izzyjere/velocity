@@ -16,4 +16,6 @@ public interface SegmentDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) long insert(SegmentEntity segment);
     @Query("UPDATE segments SET end_byte = :end, updated_at = :now WHERE id = :id") int updateEnd(long id, long end, long now);
     @Query("SELECT COALESCE(SUM(completed_bytes), 0) FROM segments WHERE download_id = :downloadId") long completedBytes(long downloadId);
+    @Query("UPDATE segments SET retry_count = 0, state = CASE WHEN completed_bytes >= (end_byte - start_byte + 1) THEN 'COMPLETE' ELSE 'PENDING' END, updated_at = :now WHERE download_id = :downloadId")
+    int resetRetryBudget(long downloadId, long now);
 }

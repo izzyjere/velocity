@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment;
 import zm.co.codelabs.adm.App;
 import zm.co.codelabs.adm.databinding.FragmentMoreBinding;
 import zm.co.codelabs.adm.R;
+import zm.co.codelabs.adm.ui.logs.LogsActivity;
 
 public final class MoreFragment extends Fragment {
     private FragmentMoreBinding binding;
@@ -24,6 +25,7 @@ public final class MoreFragment extends Fragment {
         binding.connections.addOnChangeListener((slider, value, user) -> { int count = (int) value; binding.connectionsValue.setText(getResources().getQuantityString(R.plurals.connection_count, count, count)); }); binding.wifiOnly.setChecked(prefs.getBoolean("wifi_only", false));
         binding.darkTheme.setChecked(prefs.getBoolean("dark_theme", false)); long bytes = prefs.getLong("speed_limit", 0); binding.speedLimit.setText(String.valueOf(bytes / 1024));
         binding.save.setOnClickListener(v -> save());
+        binding.logs.setOnClickListener(v -> startActivity(new Intent(requireContext(), LogsActivity.class)));
         binding.github.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/izzyjere"))));
     }
     private void save() {

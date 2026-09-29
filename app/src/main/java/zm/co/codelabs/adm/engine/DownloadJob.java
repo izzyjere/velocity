@@ -17,6 +17,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Phaser;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -34,6 +35,7 @@ import zm.co.codelabs.adm.storage.StorageCapacity;
 import zm.co.codelabs.adm.transport.TransportCall;
 import zm.co.codelabs.adm.transport.TransportClient;
 import zm.co.codelabs.adm.transport.HttpStatusException;
+import zm.co.codelabs.adm.platform.logging.AppLogStore;
 
 public final class DownloadJob implements Runnable {
     public interface Listener {
@@ -49,18 +51,22 @@ public final class DownloadJob implements Runnable {
     private final AtomicBoolean stop = new AtomicBoolean();
     private final AtomicBoolean abort = new AtomicBoolean();
     private final AtomicBoolean cancel = new AtomicBoolean();
+    private final AtomicBoolean serverRequiresSingleConnection = new AtomicBoolean();
+    private final Semaphore singleConnectionPermit = new Semaphore(1, true);
     private final Set<TransportCall> calls = ConcurrentHashMap.newKeySet();
     private final Listener listener;
     private final TokenBucket globalLimiter;
     private final StorageCapacity storageCapacity;
+    private final AppLogStore logs;
 
-    public DownloadJob(long id, DownloadRepository repository, TransportClient transport, ExecutorService workers, TokenBucket globalLimiter, StorageCapacity storageCapacity, Listener listener) {
+    public DownloadJob(long id, DownloadRepository repository, TransportClient transport, ExecutorService workers, TokenBucket globalLimiter, StorageCapacity storageCapacity, AppLogStore logs, Listener listener) {
         this.id = id;
         this.repository = repository;
         this.transport = transport;
         this.workers = workers;
         this.globalLimiter = globalLimiter;
         this.storageCapacity = storageCapacity;
+        this.logs = logs;
         this.listener = listener;
     }
     public void pause() { stop.set(true); calls.forEach(TransportCall::cancel); }
@@ -122,6 +128,7 @@ public final class DownloadJob implements Runnable {
             record.completedAt = System.currentTimeMillis();
             repository.update(record);
             repository.transition(id, DownloadState.VERIFYING, DownloadState.COMPLETED);
+            logs.info("Download #" + id, "Completed successfully");
             listener.onTerminal(id, DownloadState.COMPLETED);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); stop.set(true); settleStopped(segments);
@@ -130,7 +137,8 @@ public final class DownloadJob implements Runnable {
             Throwable root = e instanceof ExecutionException && e.getCause() != null ? e.getCause() : e;
             ErrorCode code = root.getMessage() != null && root.getMessage().toLowerCase(java.util.Locale.ROOT).contains("checksum")
                     ? ErrorCode.CHECKSUM_MISMATCH : root instanceof HttpStatusException status ? RetryPolicy.classifyHttp(status.statusCode()) : RetryPolicy.classify(root);
-            fail(code, safeMessage(root));
+            logs.error("Download #" + id + "/" + code.name(), root);
+            fail(code, "Download failed");
             listener.onTerminal(id, DownloadState.FAILED);
         }
     }
@@ -170,34 +178,48 @@ public final class DownloadJob implements Runnable {
                 aggregate.addAndGet(-segment.completedBytes); segment.completedBytes = 0; absolute = segment.startByte;
             }
             String validator = record.etag != null && !record.etag.startsWith("W/") ? record.etag : record.lastModified;
-            try (TransportCall call = transport.open(new TransferRequest(
-                    record.resolvedUrl != null ? record.resolvedUrl : record.canonicalUrl, repository.headers(record), range, validator))) {
-                calls.add(call); segment.state = "RUNNING";
-                if (!record.rangeSupported && (call.statusCode() < 200 || call.statusCode() >= 300)) throw new HttpStatusException(call.statusCode(), firstHeader(call.headers(), "Retry-After"));
-                byte[] buffer = new byte[128 * 1024]; InputStream in = call.body(); int n;
-                while (!shouldStop() && (n = in.read(buffer, 0, remaining == Long.MAX_VALUE ? buffer.length : (int) Math.min(buffer.length, remaining))) != -1) {
-                    int allowed;
-                    synchronized (segment) { long available = segment.endByte == Long.MAX_VALUE - 1 ? n : Math.max(0, segment.endByte - absolute + 1); allowed = (int) Math.min(n, available); if (allowed > 0) { globalLimiter.acquire(allowed); limiter.acquire(allowed); writer.write(absolute, buffer, 0, allowed); absolute += allowed; segment.completedBytes += allowed; aggregate.addAndGet(allowed); } }
-                    if (allowed == 0) break;
-                    if (remaining != Long.MAX_VALUE) remaining = Math.max(0, segment.endByte - absolute + 1);
-                    long now = System.nanoTime(); double rate = speed.update(aggregate.get(), now);
-                    long previousPublish = lastPublish.get(); if (now - previousPublish >= 200_000_000L && lastPublish.compareAndSet(previousPublish, now)) listener.onProgress(id, aggregate.get(), record.totalBytes, rate);
-                    long previousPersist = lastPersist.get(); if (now - previousPersist >= 1_000_000_000L && lastPersist.compareAndSet(previousPersist, now)) repository.persistProgressAsync(id, new ArrayList<>(all), rate);
-                    if (remaining == 0) break;
+            boolean singlePermitHeld = false;
+            TransportCall activeCall = null;
+            try {
+                if (serverRequiresSingleConnection.get()) { singleConnectionPermit.acquire(); singlePermitHeld = true; }
+                TransportCall opened = transport.open(new TransferRequest(
+                        record.resolvedUrl != null ? record.resolvedUrl : record.canonicalUrl, repository.headers(record), range, validator));
+                activeCall = opened; calls.add(opened);
+                try (opened) {
+                    segment.state = "RUNNING";
+                    if (!record.rangeSupported && (opened.statusCode() < 200 || opened.statusCode() >= 300)) throw new HttpStatusException(opened.statusCode(), firstHeader(opened.headers(), "Retry-After"));
+                    byte[] buffer = new byte[128 * 1024]; InputStream in = opened.body(); int n;
+                    while (!shouldStop() && (n = in.read(buffer, 0, remaining == Long.MAX_VALUE ? buffer.length : (int) Math.min(buffer.length, remaining))) != -1) {
+                        int allowed;
+                        synchronized (segment) { long available = segment.endByte == Long.MAX_VALUE - 1 ? n : Math.max(0, segment.endByte - absolute + 1); allowed = (int) Math.min(n, available); if (allowed > 0) { globalLimiter.acquire(allowed); limiter.acquire(allowed); writer.write(absolute, buffer, 0, allowed); absolute += allowed; segment.completedBytes += allowed; aggregate.addAndGet(allowed); } }
+                        if (allowed == 0) break;
+                        if (remaining != Long.MAX_VALUE) remaining = Math.max(0, segment.endByte - absolute + 1);
+                        long now = System.nanoTime(); double rate = speed.update(aggregate.get(), now);
+                        long previousPublish = lastPublish.get(); if (now - previousPublish >= 200_000_000L && lastPublish.compareAndSet(previousPublish, now)) listener.onProgress(id, aggregate.get(), record.totalBytes, rate);
+                        long previousPersist = lastPersist.get(); if (now - previousPersist >= 1_000_000_000L && lastPersist.compareAndSet(previousPersist, now)) repository.persistProgressAsync(id, new ArrayList<>(all), rate);
+                        if (remaining == 0) break;
+                    }
+                    if (shouldStop()) return;
+                    if (remaining != Long.MAX_VALUE && remaining != 0) throw new EOFException("Response ended before the segment was complete");
+                    if (remaining == Long.MAX_VALUE) {
+                        segment.endByte = segment.startByte + segment.completedBytes - 1;
+                        DownloadEntity latest = repository.get(id); latest.totalBytes = segment.completedBytes; repository.update(latest);
+                    }
+                    segment.state = "COMPLETE"; return;
                 }
-                calls.remove(call);
-                if (shouldStop()) return;
-                if (remaining != Long.MAX_VALUE && remaining != 0) throw new EOFException("Response ended before the segment was complete");
-                if (remaining == Long.MAX_VALUE) {
-                    segment.endByte = segment.startByte + segment.completedBytes - 1;
-                    DownloadEntity latest = repository.get(id); latest.totalBytes = segment.completedBytes; repository.update(latest);
-                }
-                segment.state = "COMPLETE"; return;
             } catch (IOException e) {
+                if (singlePermitHeld) { singleConnectionPermit.release(); singlePermitHeld = false; }
                 attempts++; segment.retryCount = attempts; segment.state = "RETRY_WAIT";
                 ErrorCode code = e instanceof HttpStatusException status ? RetryPolicy.classifyHttp(status.statusCode()) : RetryPolicy.classify(e);
+                if (e instanceof HttpStatusException status && (status.statusCode() == 429 || status.statusCode() == 503)) {
+                    if (serverRequiresSingleConnection.compareAndSet(false, true)) logs.warning("Download #" + id, "Server throttled parallel requests; switched to one connection");
+                    calls.forEach(TransportCall::cancel);
+                }
                 if (shouldStop() || !retryPolicy.shouldRetry(code, attempts)) throw e;
                 Thread.sleep(retryPolicy.delayMillis(attempts, e instanceof HttpStatusException status ? status.retryAfterMillis() : -1));
+            } finally {
+                if (activeCall != null) calls.remove(activeCall);
+                if (singlePermitHeld) singleConnectionPermit.release();
             }
         }
     }
@@ -230,10 +252,6 @@ public final class DownloadJob implements Runnable {
     private void fail(ErrorCode code, String message) {
         DownloadEntity record = repository.get(id); if (record == null) return;
         record.state = DownloadState.FAILED.name(); record.errorCode = code.name(); record.errorMessage = message; record.speedBytesPerSecond = 0; repository.update(record);
-    }
-    private static String safeMessage(Throwable e) {
-        String message = e.getMessage();
-        return message == null || message.isBlank() ? e.getClass().getSimpleName() : message.replaceAll("https?://\\S+", "remote resource");
     }
     private static void moveAtomically(File source, File target) throws IOException {
         try { Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }

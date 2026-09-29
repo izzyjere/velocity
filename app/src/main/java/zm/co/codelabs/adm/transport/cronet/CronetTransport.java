@@ -3,7 +3,8 @@ package zm.co.codelabs.adm.transport.cronet;
 import android.content.Context;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
@@ -86,12 +87,22 @@ public final class CronetTransport implements TransportClient {
             if (failure != null) throw failure;
         }
         @Override public void onRedirectReceived(UrlRequest req, UrlResponseInfo response, String newLocationUrl) {
-            URI oldUri = URI.create(response.getUrl()), next = URI.create(newLocationUrl);
-            if ("https".equalsIgnoreCase(oldUri.getScheme()) && !"https".equalsIgnoreCase(next.getScheme())) { failure = new IOException("Refusing HTTPS downgrade redirect"); headersReady.countDown(); req.cancel(); return; }
-            boolean same = oldUri.getScheme().equalsIgnoreCase(next.getScheme()) && oldUri.getHost() != null && oldUri.getHost().equalsIgnoreCase(next.getHost()) && port(oldUri) == port(next);
-            if (same || !hasSensitiveHeaders) req.followRedirect();
-            else { failure = new IOException("Cross-origin redirect requires sanitized fallback"); headersReady.countDown(); req.cancel(); }
+            try {
+                // URL intentionally accepts common server-generated paths (for example raw '[' and ']')
+                // that strict java.net.URI rejects. Cronet itself can safely follow these redirects.
+                URL oldUrl = new URL(response.getUrl()), next = new URL(newLocationUrl);
+                if ("https".equalsIgnoreCase(oldUrl.getProtocol()) && !"https".equalsIgnoreCase(next.getProtocol())) {
+                    rejectRedirect(req, new IOException("Refusing HTTPS downgrade redirect")); return;
+                }
+                boolean same = oldUrl.getProtocol().equalsIgnoreCase(next.getProtocol())
+                        && oldUrl.getHost().equalsIgnoreCase(next.getHost()) && port(oldUrl) == port(next);
+                if (same || !hasSensitiveHeaders) req.followRedirect();
+                else rejectRedirect(req, new IOException("Cross-origin redirect requires sanitized fallback"));
+            } catch (MalformedURLException | RuntimeException e) {
+                rejectRedirect(req, new IOException("Invalid redirect location", e));
+            }
         }
+        private void rejectRedirect(UrlRequest req, IOException error) { failure = error; headersReady.countDown(); req.cancel(); }
         @Override public void onResponseStarted(UrlRequest req, UrlResponseInfo response) { info = response; headersReady.countDown(); req.read(ByteBuffer.allocateDirect(128 * 1024)); }
         @Override public void onReadCompleted(UrlRequest req, UrlResponseInfo response, ByteBuffer buffer) {
             buffer.flip(); byte[] data = new byte[buffer.remaining()]; buffer.get(data);
@@ -122,6 +133,6 @@ public final class CronetTransport implements TransportClient {
                 int count = Math.min(len, current.length - offset); System.arraycopy(current, offset, b, off, count); offset += count; return count;
             }
         }
-        private static int port(URI value) { return value.getPort() >= 0 ? value.getPort() : ("https".equalsIgnoreCase(value.getScheme()) ? 443 : 80); }
+        private static int port(URL value) { return value.getPort() >= 0 ? value.getPort() : value.getDefaultPort(); }
     }
 }

@@ -31,7 +31,18 @@ public final class DownloadService extends Service implements DownloadCoordinato
         return START_NOT_STICKY;
     }
     @Override public void onProgress(long id, long bytes, long total, double speed) { long now = android.os.SystemClock.elapsedRealtime(); if (id != currentId || now - lastNotification < 500) return; lastNotification = now; DownloadEntity item = ((App) getApplication()).repository().get(id); getSystemService(NotificationManager.class).notify(notificationId(id), DownloadNotifications.progress(this, id, item == null ? "Download" : item.fileName, bytes, total, speed, false)); }
-    @Override public void onTerminal(long id, DownloadState state) { if (id != currentId) return; if (state == DownloadState.PAUSED) { DownloadEntity item = ((App) getApplication()).repository().get(id); getSystemService(NotificationManager.class).notify(notificationId(id), DownloadNotifications.progress(this, id, item == null ? "Download" : item.fileName, item == null ? 0 : item.completedBytes, item == null ? -1 : item.totalBytes, 0, true)); stopForeground(STOP_FOREGROUND_DETACH); } else { stopForeground(STOP_FOREGROUND_REMOVE); } stopSelf(); }
+    @Override public void onTerminal(long id, DownloadState state) {
+        NotificationManager notifications = getSystemService(NotificationManager.class);
+        if (state == DownloadState.PAUSED) {
+            DownloadEntity item = ((App) getApplication()).repository().get(id);
+            notifications.notify(notificationId(id), DownloadNotifications.progress(this, id, item == null ? "Download" : item.fileName, item == null ? 0 : item.completedBytes, item == null ? -1 : item.totalBytes, 0, true));
+            if (id == currentId) stopForeground(STOP_FOREGROUND_DETACH);
+        } else {
+            notifications.cancel(notificationId(id));
+            if (id == currentId) stopForeground(STOP_FOREGROUND_REMOVE);
+        }
+        if (id == currentId) stopSelf();
+    }
     @Override public void onTimeout(int startId, int fgsType) { if (currentId >= 0) ((App) getApplication()).coordinator().pause(currentId); stopSelf(); }
     @Override public void onDestroy() { ((App) getApplication()).coordinator().removeObserver(this); super.onDestroy(); }
     @Nullable @Override public IBinder onBind(Intent intent) { return null; }

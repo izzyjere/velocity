@@ -19,5 +19,18 @@
     <string name="about_title">About Velocity</string>
     <string name="developer_details">Developed by Wisdom Jere\nCodelabs Zambia</string>
     <string name="github_profile">GitHub: @izzyjere</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="view_logs">View logs</string>
+    <string name="logs">Logs</string>
+    <string name="logs_summary">Technical diagnostics are stored only on this device. Sensitive URLs and credentials are redacted.</string>
+    <string name="refresh">Refresh</string>
+    <string name="copy">Copy</string>
+    <string name="clear">Clear</string>
+    <string name="clear_logs_title">Clear logs?</string>
+    <string name="clear_logs_message">This permanently removes the diagnostic history stored by Velocity.</string>
+    <string name="logs_empty">No diagnostic events yet.</string>
+    <string name="logs_copied">Logs copied</string>
+    <string name="logs_cleared">Logs cleared</string>
+    <string name="back">Back</string>
     <plurals name="active_downloads"><item quantity="one">%1$d active • %2$s</item><item quantity="other">%1$d active • %2$s</item></plurals>
 </resources>

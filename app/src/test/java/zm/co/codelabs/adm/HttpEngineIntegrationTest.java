@@ -53,6 +53,15 @@ public class HttpEngineIntegrationTest {
             assertTrue(result.rangeSupported()); assertNull(target.takeRequest().getHeader("Cookie"));
         }
     }
+    @Test public void acceptsCommonRawBracketsInServerGeneratedPath() throws Exception {
+        try (MockWebServer server = new MockWebServer(); OkHttpTransport transport = new OkHttpTransport(new OkHttpClient())) {
+            server.enqueue(new MockResponse().setResponseCode(200).setBody("payload")); server.start();
+            String url = server.url("/").toString() + "archive/File [2026].zip";
+            try (TransportCall call = transport.open(new TransferRequest(url, Map.of(), null, null))) {
+                assertEquals(200, call.statusCode()); assertEquals("payload", new String(call.body().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
+    }
     @Test public void probeAndParallelPositionedDownloadProduceExactBytes() throws Exception {
         byte[] source = new byte[8 * 1024 * 1024]; new Random(7).nextBytes(source);
         try (MockWebServer server = rangeServer(source); OkHttpTransport transport = new OkHttpTransport(new OkHttpClient())) {

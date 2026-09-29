@@ -54,6 +54,7 @@ public final class DownloadRepository {
     public List<DownloadEntity> queued() { return db.downloads().nextQueued(); }
     public void delete(long id) { db.downloads().delete(id); }
     public void moveToTop(long id) { db.downloads().setQueuePosition(id, 0, System.currentTimeMillis()); }
+    public void resetRetryBudget(long id) { db.segments().resetRetryBudget(id, System.currentTimeMillis()); }
     public void resetForFreshProbe(DownloadEntity item) { db.runInTransaction(() -> { db.segments().deleteForDownload(item.id); item.resolvedUrl = null; item.totalBytes = -1; item.completedBytes = 0; item.etag = null; item.lastModified = null; item.rangeSupported = false; item.protocol = null; item.errorCode = null; item.errorMessage = null; item.state = DownloadState.NEW.name(); update(item); }); }
     public void recoverInterrupted() {
         long now = System.currentTimeMillis();

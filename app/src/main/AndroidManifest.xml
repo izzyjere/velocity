@@ -50,6 +50,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".ui.logs.LogsActivity" android:exported="false" />
         <service android:name=".platform.service.DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".platform.service.DownloadJobService" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <receiver android:name=".platform.boot.BootReceiver" android:enabled="true" android:exported="true">

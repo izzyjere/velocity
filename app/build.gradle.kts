@@ -85,6 +85,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.activity:activity:1.13.0")
     implementation("androidx.fragment:fragment:1.9.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.2")
     implementation("androidx.lifecycle:lifecycle-livedata:2.11.0")

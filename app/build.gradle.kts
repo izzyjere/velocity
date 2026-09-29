@@ -5,8 +5,8 @@ plugins {
 
 room { schemaDirectory("$projectDir/schemas") }
 
-val configuredVersionName = providers.gradleProperty("versionName").orElse("1.0.1")
-val configuredVersionCode = providers.gradleProperty("versionCode").map(String::toInt).orElse(1_000_001)
+val configuredVersionName = providers.gradleProperty("versionName").orElse("1.0.2")
+val configuredVersionCode = providers.gradleProperty("versionCode").map(String::toInt).orElse(1_000_002)
 val releaseStoreFile = System.getenv("VELOCITY_SIGNING_STORE_FILE")
 val releaseStorePassword = System.getenv("VELOCITY_SIGNING_STORE_PASSWORD")
 val releaseKeyAlias = System.getenv("VELOCITY_SIGNING_KEY_ALIAS")

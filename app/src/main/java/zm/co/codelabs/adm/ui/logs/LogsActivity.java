@@ -21,6 +21,9 @@ public final class LogsActivity extends AppCompatActivity {
     private ActivityLogsBinding binding;
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> new Thread(r, "logs-screen"));
     private String displayedLogs = "";
+    private boolean refreshing;
+    private boolean refreshAgain;
+    private final Runnable logListener = () -> runOnUiThread(() -> refresh(false));
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -33,23 +36,45 @@ public final class LogsActivity extends AppCompatActivity {
         });
         binding.toolbar.setNavigationContentDescription(R.string.back);
         binding.toolbar.setNavigationOnClickListener(v -> finish());
-        binding.refresh.setOnClickListener(v -> refresh());
+        binding.refresh.setOnClickListener(v -> refresh(true));
         binding.copy.setOnClickListener(v -> copy());
         binding.clear.setOnClickListener(v -> confirmClear());
-        refresh();
+        refresh(true);
     }
 
-    private void refresh() {
-        setLoading(true);
+    @Override protected void onStart() {
+        super.onStart();
+        ((App) getApplication()).logs().addListener(logListener);
+        refresh(false);
+    }
+
+    @Override protected void onStop() {
+        ((App) getApplication()).logs().removeListener(logListener);
+        super.onStop();
+    }
+
+    private void refresh(boolean showLoading) {
+        if (refreshing) { refreshAgain = true; return; }
+        refreshing = true;
+        if (showLoading) setLoading(true);
         io.execute(() -> {
             String content = ((App) getApplication()).logs().read();
             runOnUiThread(() -> {
                 if (isFinishing() || binding == null) return;
+                boolean followTail = !binding.logScroll.canScrollVertically(1);
+                int savedScrollY = binding.logScroll.getScrollY();
                 displayedLogs = content;
                 binding.content.setText(content.isBlank() ? getString(R.string.logs_empty) : content);
                 binding.copy.setEnabled(!content.isBlank());
                 binding.clear.setEnabled(!content.isBlank());
                 setLoading(false);
+                binding.logScroll.post(() -> {
+                    if (binding == null) return;
+                    if (followTail) binding.logScroll.fullScroll(View.FOCUS_DOWN);
+                    else binding.logScroll.scrollTo(0, savedScrollY);
+                });
+                refreshing = false;
+                if (refreshAgain) { refreshAgain = false; refresh(false); }
             });
         });
     }
@@ -77,7 +102,7 @@ public final class LogsActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (isFinishing() || binding == null) return;
                 Toast.makeText(this, R.string.logs_cleared, Toast.LENGTH_SHORT).show();
-                refresh();
+                refresh(true);
             });
         });
     }

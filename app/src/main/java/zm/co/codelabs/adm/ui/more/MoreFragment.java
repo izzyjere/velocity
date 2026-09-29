@@ -16,6 +16,7 @@ import zm.co.codelabs.adm.App;
 import zm.co.codelabs.adm.databinding.FragmentMoreBinding;
 import zm.co.codelabs.adm.R;
 import zm.co.codelabs.adm.ui.logs.LogsActivity;
+import zm.co.codelabs.adm.ui.update.UpdateActivity;
 
 public final class MoreFragment extends Fragment {
     private FragmentMoreBinding binding;
@@ -26,6 +27,7 @@ public final class MoreFragment extends Fragment {
         binding.darkTheme.setChecked(prefs.getBoolean("dark_theme", false)); long bytes = prefs.getLong("speed_limit", 0); binding.speedLimit.setText(String.valueOf(bytes / 1024));
         binding.save.setOnClickListener(v -> save());
         binding.logs.setOnClickListener(v -> startActivity(new Intent(requireContext(), LogsActivity.class)));
+        binding.updates.setOnClickListener(v -> startActivity(new Intent(requireContext(), UpdateActivity.class)));
         binding.github.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/izzyjere"))));
     }
     private void save() {

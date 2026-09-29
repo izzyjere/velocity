@@ -4,6 +4,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -38,6 +40,19 @@ public final class AppLogStoreTest {
             store.clear();
 
             assertTrue(store.read().isBlank());
+        }
+    }
+
+    @Test public void notifiesVisibleConsumersAfterAnEventIsPersisted() throws Exception {
+        File directory = temporary.newFolder("streaming");
+        try (AppLogStore store = new AppLogStore(directory)) {
+            CountDownLatch event = new CountDownLatch(1);
+            store.addListener(event::countDown);
+
+            store.info("Streaming", "new event");
+
+            assertTrue(event.await(2, TimeUnit.SECONDS));
+            assertTrue(store.read().contains("new event"));
         }
     }
 }

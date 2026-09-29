@@ -14,6 +14,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.regex.Pattern;
 
 /** Bounded, application-private diagnostics with credential and URL redaction. */
@@ -28,6 +29,7 @@ public final class AppLogStore implements AutoCloseable {
     private final File current;
     private final File previous;
     private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> new Thread(r, "diagnostic-log"));
+    private final CopyOnWriteArraySet<Runnable> listeners = new CopyOnWriteArraySet<>();
 
     public AppLogStore(@NonNull Context context) {
         this(new File(context.getFilesDir(), "diagnostics"));
@@ -44,6 +46,8 @@ public final class AppLogStore implements AutoCloseable {
     public void info(String area, String message) { enqueue("INFO", area, message, null); }
     public void warning(String area, String message) { enqueue("WARN", area, message, null); }
     public void error(String area, Throwable error) { enqueue("ERROR", area, error == null ? "Unknown failure" : error.toString(), error); }
+    public void addListener(Runnable listener) { listeners.add(listener); }
+    public void removeListener(Runnable listener) { listeners.remove(listener); }
 
     /** Used by the uncaught-exception handler, where asynchronous work may never run. */
     public void errorNow(String area, Throwable error) {
@@ -84,12 +88,15 @@ public final class AppLogStore implements AutoCloseable {
     }
 
     private void append(String event) {
+        boolean written = false;
         synchronized (fileLock) {
             try {
                 if (current.length() + event.length() * 2L > MAX_FILE_BYTES) rotate();
                 try (BufferedWriter output = new BufferedWriter(new FileWriter(current, true))) { output.write(event); }
+                written = true;
             } catch (IOException ignored) { }
         }
+        if (written) listeners.forEach(AppLogStore::notifySafely);
     }
 
     private void rotate() throws IOException {
@@ -113,6 +120,7 @@ public final class AppLogStore implements AutoCloseable {
             if (current.exists()) current.delete();
             if (previous.exists()) previous.delete();
         }
+        listeners.forEach(AppLogStore::notifySafely);
     }
 
     public void flush() {
@@ -128,6 +136,10 @@ public final class AppLogStore implements AutoCloseable {
             String line;
             while ((line = input.readLine()) != null) result.append(line).append('\n');
         } catch (IOException ignored) { }
+    }
+
+    private static void notifySafely(Runnable listener) {
+        try { listener.run(); } catch (RuntimeException ignored) { }
     }
 
     @Override public void close() { flush(); writer.shutdown(); }

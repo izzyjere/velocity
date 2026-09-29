@@ -12,6 +12,7 @@ import zm.co.codelabs.adm.engine.ProgressMath;
 import zm.co.codelabs.adm.platform.notification.DownloadNotifications;
 import zm.co.codelabs.adm.R;
 import androidx.core.content.ContextCompat;
+import zm.co.codelabs.adm.util.CommonUtils;
 
 public final class DownloadAdapter extends ListAdapter<DownloadEntity, DownloadAdapter.Holder> {
     public interface Actions { void primary(DownloadEntity item); void menu(DownloadEntity item, android.view.View anchor); }
@@ -29,7 +30,7 @@ public final class DownloadAdapter extends ListAdapter<DownloadEntity, DownloadA
                     ? R.color.error : R.color.primary));
             boolean known = item.totalBytes > 0; b.progress.setIndeterminate(!known); if (known) b.progress.setProgressCompat(ProgressMath.permille(item.completedBytes, item.totalBytes, "COMPLETED".equals(item.state)), true);
             String transfer = item.speedBytesPerSecond > 0 ? " • " + DownloadNotifications.humanSpeed(item.speedBytesPerSecond) + eta(item) : "";
-            b.meta.setText(known ? DownloadNotifications.humanBytes(item.completedBytes) + " / " + DownloadNotifications.humanBytes(item.totalBytes) + transfer + connectionLabel(item) : DownloadNotifications.humanBytes(item.completedBytes) + transfer);
+            b.meta.setText(known ? CommonUtils.humanSize(item.completedBytes) + " / " + CommonUtils.humanSize(item.totalBytes) + transfer + connectionLabel(item) : CommonUtils.humanSize(item.completedBytes) + transfer);
             b.primaryAction.setText(primaryLabel(item.state)); b.primaryAction.setEnabled(!"CANCELED".equals(item.state)); b.primaryAction.setOnClickListener(v -> actions.primary(item)); b.moreAction.setOnClickListener(v -> actions.menu(item, v));
             b.getRoot().setContentDescription(item.fileName + ", " + status(item) + ", " + b.meta.getText());
         }

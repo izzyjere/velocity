@@ -6,13 +6,13 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
 import android.service.notification.StatusBarNotification;
 import androidx.core.app.NotificationCompat;
 import zm.co.codelabs.adm.R;
 import zm.co.codelabs.adm.engine.ProgressMath;
 import zm.co.codelabs.adm.platform.service.DownloadService;
 import zm.co.codelabs.adm.ui.MainActivity;
+import zm.co.codelabs.adm.util.CommonUtils;
 
 public final class DownloadNotifications {
     public static final String CHANNEL = "active_downloads";
@@ -43,8 +43,8 @@ public final class DownloadNotifications {
                 .setContentText(paused ? "Paused" : humanSpeed(speed)).setOnlyAlertOnce(true).setOngoing(!paused).setContentIntent(content)
                 .setCategory(NotificationCompat.CATEGORY_PROGRESS).setGroup("downloads");
         if (total > 0)
-            builder.setProgress(1000, ProgressMath.permille(bytes, total, false), false).setSubText(humanBytes(bytes) + " / " + humanBytes(total));
-        else builder.setProgress(0, 0, !paused).setSubText(humanBytes(bytes));
+            builder.setProgress(1000, ProgressMath.permille(bytes, total, false), false).setSubText(CommonUtils.humanSize(bytes) + " / " + CommonUtils.humanSize(total));
+        else builder.setProgress(0, 0, !paused).setSubText(CommonUtils.humanSize(bytes));
         String action = paused ? DownloadService.ACTION_RESUME : DownloadService.ACTION_PAUSE;
         builder.addAction(0, paused ? "Resume" : "Pause", serviceAction(context, id, action, paused ? 2 : 1));
         builder.addAction(0, "Cancel", serviceAction(context, id, DownloadService.ACTION_CANCEL, 3));
@@ -57,18 +57,6 @@ public final class DownloadNotifications {
     }
 
     public static String humanSpeed(double value) {
-        return value <= 0 ? "Starting…" : humanBytes((long) value) + "/s";
-    }
-
-    public static String humanBytes(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        String[] units = {"KB", "MB", "GB", "TB"};
-        double v = bytes;
-        int i = -1;
-        do {
-            v /= 1024;
-            i++;
-        } while (v >= 1024 && i < units.length - 1);
-        return String.format(java.util.Locale.getDefault(), v >= 100 ? "%.0f %s" : "%.1f %s", v, units[i]);
-    }
+        return value <= 0 ? "Starting…" : CommonUtils.humanSize((long) value) + "/s";
+    }    
 }

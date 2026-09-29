@@ -16,6 +16,7 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import zm.co.codelabs.adm.util.CommonUtils;
 
 /**
  * Resolves a YouTube watch/share URL into directly downloadable progressive and adaptive streams.
@@ -70,7 +71,7 @@ public final class YouTubeExtractor {
             String kind = audioOnly ? "Audio" : "Video";
             String quality = qualityLabel == null || qualityLabel.isBlank() ? "" : " " + qualityLabel;
             String container = containerExtension(mimeType);
-            String size = contentLength > 0 ? " · " + humanSize(contentLength) : "";
+            String size = contentLength > 0 ? " · " + CommonUtils.humanSize(contentLength) : "";
             return kind + quality + " (" + container + ")" + size;
         }
 
@@ -278,15 +279,4 @@ public final class YouTubeExtractor {
         return matcher.find() ? matcher.group(1) : "bin";
     }
 
-    private static String humanSize(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        String[] units = {"KB", "MB", "GB", "TB"};
-        double value = bytes;
-        int unit = -1;
-        do {
-            value /= 1024;
-            unit++;
-        } while (value >= 1024 && unit < units.length - 1);
-        return String.format(Locale.ROOT, "%.1f %s", value, units[unit]);
-    }
 }

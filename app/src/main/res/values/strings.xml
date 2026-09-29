@@ -4,7 +4,7 @@
     <string name="add_download">Add download</string>
     <string name="notification_channel_downloads">Active downloads</string>
     <string name="notification_channel_description">Progress and controls for active downloads</string>
-    <string name="ready">Ready</string><string name="web_address">Web address</string><string name="go">Go</string>
+    <string name="ready">Ready</string><string name="web_address">Web address</string><string name="search_or_enter_address">Search or enter address</string><string name="go">Go</string>
     <string name="filter_all">All</string><string name="filter_active">Active</string><string name="filter_complete">Complete</string><string name="filter_failed">Failed</string>
     <string name="downloads_empty">No downloads yet\nTap + or share a link to get started</string><string name="files_empty">No completed files</string><string name="queue_empty">Queue is empty</string><string name="nothing_here">Nothing here</string>
     <string name="download_settings">Download settings</string><string name="wifi_default">Wi-Fi only by default</string><string name="wifi_only">Wi-Fi only</string><string name="dark_theme">Dark theme</string>

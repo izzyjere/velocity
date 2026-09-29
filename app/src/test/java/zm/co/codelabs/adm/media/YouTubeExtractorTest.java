@@ -47,4 +47,28 @@ public final class YouTubeExtractorTest {
         String ciphered = "{\"streamingData\":{\"adaptiveFormats\":[{\"itag\":251,\"signatureCipher\":\"s=abc\"}]}}";
         assertTrue(YouTubeExtractor.parsePlayerResponse(ciphered).isEmpty());
     }
+
+    @Test public void reusesPlayableBrowserResponseWithoutAnotherPlayerRequest() throws Exception {
+        String json = "{\"videoDetails\":{\"title\":\"Browser title\"},"
+                + "\"streamingData\":{\"formats\":[{\"itag\":18,"
+                + "\"url\":\"https://rr1.googlevideo.com/videoplayback?itag=18\","
+                + "\"mimeType\":\"video/mp4\",\"qualityLabel\":\"360p\"}]}}";
+        YouTubeExtractor.BrowserSession session = new YouTubeExtractor.BrowserSession(
+                "VISITOR_INFO1_LIVE=value", "visitor", json, "Browser UA");
+
+        YouTubeExtractor.Resolution result = new YouTubeExtractor()
+                .resolve("https://www.youtube.com/watch?v=dQw4w9WgXcQ", session);
+
+        assertEquals("Browser title", result.title());
+        assertEquals(1, result.streams().size());
+        assertEquals("Browser UA", result.streamUserAgent());
+    }
+
+    @Test public void createsYouTubeSessionAuthorizationWithoutExposingCookieValue() {
+        String authorization = YouTubeExtractor.authorizationHeader(
+                "PREF=x; SAPISID=secret; SID=y", 123L);
+        assertEquals("SAPISIDHASH 123_30a006a7c5a295bee1489c54c5b7a28857edecfb",
+                authorization);
+        assertFalse(authorization.contains("secret"));
+    }
 }

@@ -30,6 +30,11 @@ import zm.co.codelabs.adm.platform.notification.DownloadNotifications;
 public final class MainActivity extends AppCompatActivity {
     public static final String EXTRA_URLS = "candidate_urls";
     public static final String EXTRA_BROWSER_URL = "browser_url";
+    private static final String TAG_DOWNLOADS = "section:downloads";
+    private static final String TAG_BROWSER = "section:browser";
+    private static final String TAG_FILES = "section:files";
+    private static final String TAG_QUEUE = "section:queue";
+    private static final String TAG_MORE = "section:more";
     private ActivityMainBinding binding;
     private final ArrayDeque<String> pendingUrls = new ArrayDeque<>();
     private final ActivityResultLauncher<String> notifications = registerForActivityResult(new ActivityResultContracts.RequestPermission(), ignored -> { });
@@ -60,8 +65,12 @@ public final class MainActivity extends AppCompatActivity {
         ArrayList<String> urls = intent.getStringArrayListExtra(EXTRA_URLS); if (urls != null) pendingUrls.addAll(urls); showNextSharedUrl();
     }
     private void openBrowser(String url) {
-        binding.navigation.setSelectedItemId(R.id.nav_browser); binding.toolbar.setTitle(R.string.browser); binding.add.setVisibility(android.view.View.GONE);
-        getSupportFragmentManager().beginTransaction().replace(R.id.content, BrowserFragment.newInstance(url)).commit();
+        binding.navigation.setSelectedItemId(R.id.nav_browser);
+        if (getSupportFragmentManager().findFragmentByTag(TAG_BROWSER) == null) {
+            showSection(R.id.nav_browser);
+        }
+        Fragment fragment = getSupportFragmentManager().findFragmentByTag(TAG_BROWSER);
+        if (fragment instanceof BrowserFragment browser) browser.navigateTo(url);
     }
     private void showNextSharedUrl() { if (getSupportFragmentManager().findFragmentByTag(AddDownloadSheet.TAG) == null && !pendingUrls.isEmpty()) showAddDownload(pendingUrls.removeFirst(), Map.of()); }
     public void showAddDownload(String url, Map<String, String> headers) { AddDownloadSheet.newInstance(url, headers).show(getSupportFragmentManager(), AddDownloadSheet.TAG); }
@@ -77,16 +86,51 @@ public final class MainActivity extends AppCompatActivity {
         item.setVisible(visible); item.setOnMenuItemClickListener(clicked -> { action.run(); return true; });
     }
     private boolean select(android.view.MenuItem item) {
-        Fragment fragment; String title;
         int id = item.getItemId();
-        if (id == R.id.nav_browser) { fragment = new BrowserFragment(); title = getString(R.string.browser); }
-        else if (id == R.id.nav_files) { fragment = new FilesFragment(); title = getString(R.string.files); }
-        else if (id == R.id.nav_queue) { fragment = new QueueFragment(); title = getString(R.string.queue); }
-        else if (id == R.id.nav_more) { fragment = new MoreFragment(); title = getString(R.string.more); }
-        else { fragment = new DownloadsFragment(); title = getString(R.string.downloads); }
+        String title;
+        if (id == R.id.nav_browser) title = getString(R.string.browser);
+        else if (id == R.id.nav_files) title = getString(R.string.files);
+        else if (id == R.id.nav_queue) title = getString(R.string.queue);
+        else if (id == R.id.nav_more) title = getString(R.string.more);
+        else title = getString(R.string.downloads);
         binding.toolbar.setTitle(title);
+        binding.aggregateSpeed.setVisibility(id == R.id.nav_browser
+                ? android.view.View.GONE : android.view.View.VISIBLE);
         if (id != R.id.nav_browser) setBrowserControlsReveal(false, () -> { });
         binding.add.setVisibility(id == R.id.nav_downloads ? android.view.View.VISIBLE : android.view.View.GONE);
-        getSupportFragmentManager().beginTransaction().replace(R.id.content, fragment).commit(); return true;
+        showSection(id);
+        return true;
+    }
+    private void showSection(int id) {
+        String tag = sectionTag(id);
+        Fragment target = getSupportFragmentManager().findFragmentByTag(tag);
+        androidx.fragment.app.FragmentTransaction transaction =
+                getSupportFragmentManager().beginTransaction();
+        for (Fragment existing : getSupportFragmentManager().getFragments()) {
+            if (existing.getId() == R.id.content && existing != target && !existing.isHidden()) {
+                transaction.hide(existing);
+            }
+        }
+        if (target == null) {
+            target = createSection(id);
+            transaction.add(R.id.content, target, tag);
+        } else {
+            transaction.show(target);
+        }
+        transaction.setPrimaryNavigationFragment(target).commitNow();
+    }
+    private static String sectionTag(int id) {
+        if (id == R.id.nav_browser) return TAG_BROWSER;
+        if (id == R.id.nav_files) return TAG_FILES;
+        if (id == R.id.nav_queue) return TAG_QUEUE;
+        if (id == R.id.nav_more) return TAG_MORE;
+        return TAG_DOWNLOADS;
+    }
+    private static Fragment createSection(int id) {
+        if (id == R.id.nav_browser) return new BrowserFragment();
+        if (id == R.id.nav_files) return new FilesFragment();
+        if (id == R.id.nav_queue) return new QueueFragment();
+        if (id == R.id.nav_more) return new MoreFragment();
+        return new DownloadsFragment();
     }
 }

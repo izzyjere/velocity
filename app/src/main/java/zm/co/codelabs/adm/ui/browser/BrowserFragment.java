@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONArray;
+import org.json.JSONObject;
 import org.json.JSONTokener;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
@@ -39,6 +40,14 @@ import zm.co.codelabs.adm.media.YouTubeExtractor;
 public final class BrowserFragment extends Fragment {
     private static final String ARG_URL = "initial_url";
     private static final int MAX_MEDIA_CANDIDATES = 50;
+    private static final String YOUTUBE_SESSION_SCRIPT =
+            "(function(){try{" +
+            "var p=window.ytInitialPlayerResponse||null;" +
+            "if(!p&&window.ytplayer&&ytplayer.config&&ytplayer.config.args){" +
+            "p=ytplayer.config.args.raw_player_response||ytplayer.config.args.player_response||null;}" +
+            "var v='';if(window.ytcfg&&typeof ytcfg.get==='function'){v=ytcfg.get('VISITOR_DATA')||'';}" +
+            "return JSON.stringify({playerResponse:typeof p==='string'?p:(p?JSON.stringify(p):''),visitorData:v});" +
+            "}catch(e){return '{}';}})();";
     private FragmentBrowserBinding binding;
     private final LinkedHashMap<String, MediaCandidate> mediaCandidates = new LinkedHashMap<>();
     private boolean addressBarVisible = true;
@@ -46,13 +55,22 @@ public final class BrowserFragment extends Fragment {
     private final ExecutorService extractionExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "youtube-extract"));
     private final YouTubeExtractor youTubeExtractor = new YouTubeExtractor();
     private boolean extracting;
+    private String pendingUrl;
     public static BrowserFragment newInstance(String url) { BrowserFragment fragment = new BrowserFragment(); Bundle args = new Bundle(); args.putString(ARG_URL, url); fragment.setArguments(args); return fragment; }
+    public void navigateTo(String url) {
+        if (url == null || url.isBlank()) return;
+        if (binding == null) { pendingUrl = url; return; }
+        binding.address.setText(url);
+        updateMediaButton(url);
+        binding.web.loadUrl(url);
+    }
     @Nullable @Override public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle state) { binding = FragmentBrowserBinding.inflate(inflater, container, false); return binding.getRoot(); }
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     @SuppressWarnings("deprecation")
     @Override public void onViewCreated(@NonNull View view, @Nullable Bundle state) {
         WebSettings settings = binding.web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(false);
         settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW); settings.setSafeBrowsingEnabled(true); settings.setMediaPlaybackRequiresUserGesture(true);
+        CookieManager cookies = CookieManager.getInstance(); cookies.setAcceptCookie(true); cookies.setAcceptThirdPartyCookies(binding.web, true);
         binding.web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { Uri uri = request.getUrl(); if ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme())) return false; return true; }
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) { mediaCandidates.clear(); if (binding != null) { setAddressBarVisible(true); binding.address.setText(url); updateMediaButton(url); } }
@@ -80,7 +98,7 @@ public final class BrowserFragment extends Fragment {
         binding.mediaDownload.setOnClickListener(v -> chooseMedia());
         ((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { });
         binding.go.setOnClickListener(v -> navigate()); binding.address.setOnEditorActionListener((v, action, event) -> { if (event == null || event.getKeyCode() == KeyEvent.KEYCODE_ENTER) { navigate(); return true; } return false; });
-        String initial = getArguments() == null ? null : getArguments().getString(ARG_URL); if (initial != null) { binding.address.setText(initial); updateMediaButton(initial); binding.web.loadUrl(initial); }
+        String initial = pendingUrl != null ? pendingUrl : getArguments() == null ? null : getArguments().getString(ARG_URL); pendingUrl = null; if (initial != null) { binding.address.setText(initial); updateMediaButton(initial); binding.web.loadUrl(initial); }
     }
     private void navigate() { String value = binding.address.getText() == null ? "" : binding.address.getText().toString().trim(); if (!value.matches("(?i)^https?://.*")) value = "https://" + value; Uri uri = Uri.parse(value); if (uri.getHost() == null || !("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))) { binding.addressLayout.setError("Enter a valid web address"); return; } binding.addressLayout.setError(null); binding.web.loadUrl(uri.toString()); }
     private void intercept(String url, String userAgent, Map<String, String> requestHeaders) { Map<String, String> headers = new LinkedHashMap<>(requestHeaders); String cookies = CookieManager.getInstance().getCookie(url); if (cookies != null && !cookies.isBlank()) headers.put("Cookie", cookies); if (userAgent != null) headers.put("User-Agent", userAgent); String referrer = binding.web.getUrl(); if (referrer != null) headers.put("Referer", referrer); ((MainActivity) requireActivity()).showAddDownload(url, headers); }
@@ -142,9 +160,17 @@ public final class BrowserFragment extends Fragment {
         if (extracting) return;
         extracting = true;
         binding.loading.setVisibility(View.VISIBLE); binding.loading.setIndeterminate(true);
+        String cookies = CookieManager.getInstance().getCookie(pageUrl);
+        String userAgent = binding.web.getSettings().getUserAgentString();
+        binding.web.evaluateJavascript(YOUTUBE_SESSION_SCRIPT, encoded -> {
+            YouTubeExtractor.BrowserSession session = browserSession(cookies, userAgent, encoded);
+            resolveYouTubeInBackground(pageUrl, session);
+        });
+    }
+    private void resolveYouTubeInBackground(String pageUrl, YouTubeExtractor.BrowserSession session) {
         extractionExecutor.execute(() -> {
             YouTubeExtractor.Resolution resolution = null; String error = null;
-            try { resolution = youTubeExtractor.resolve(pageUrl); } catch (Exception e) { error = e.getMessage(); }
+            try { resolution = youTubeExtractor.resolve(pageUrl, session); } catch (Exception e) { error = e.getMessage(); }
             final YouTubeExtractor.Resolution result = resolution; final String failure = error;
             if (binding == null) return;
             binding.getRoot().post(() -> {
@@ -156,9 +182,25 @@ public final class BrowserFragment extends Fragment {
             });
         });
     }
+    private static YouTubeExtractor.BrowserSession browserSession(String cookies, String userAgent,
+                                                                   String encoded) {
+        try {
+            Object decoded = new JSONTokener(encoded == null ? "" : encoded).nextValue();
+            String snapshot = decoded instanceof String ? (String) decoded : "{}";
+            JSONObject values = new JSONObject(snapshot);
+            return new YouTubeExtractor.BrowserSession(cookies,
+                    values.optString("visitorData", null),
+                    values.optString("playerResponse", null), userAgent);
+        } catch (Exception ignored) {
+            return new YouTubeExtractor.BrowserSession(cookies, null, null, userAgent);
+        }
+    }
     private void showYouTubeStreams(YouTubeExtractor.Resolution resolution) {
         List<YouTubeExtractor.Stream> streams = resolution.streams();
-        Map<String, String> headers = Map.of("User-Agent", YouTubeExtractor.STREAM_USER_AGENT);
+        String referrer = binding.web.getUrl();
+        Map<String, String> headers = referrer == null
+                ? Map.of("User-Agent", resolution.streamUserAgent())
+                : Map.of("User-Agent", resolution.streamUserAgent(), "Referer", referrer);
         if (streams.size() == 1) { downloadStream(streams.get(0), resolution.title(), headers); return; }
         BottomSheetMediaChooserBinding chooser = BottomSheetMediaChooserBinding.inflate(getLayoutInflater());
         chooser.mediaSummary.setText(getResources().getQuantityString(R.plurals.media_files_found, streams.size(), streams.size()));

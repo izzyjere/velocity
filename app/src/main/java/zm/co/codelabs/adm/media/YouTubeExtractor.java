@@ -1,6 +1,8 @@
 package zm.co.codelabs.adm.media;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -60,8 +62,30 @@ public final class YouTubeExtractor {
         this.client = client;
     }
 
+    /** Browser state captured from the currently visible YouTube page. */
+    public record BrowserSession(String cookies, String visitorData, String playerResponse,
+                                 String userAgent) {
+        public BrowserSession {
+            cookies = clean(cookies);
+            visitorData = clean(visitorData);
+            playerResponse = clean(playerResponse);
+            userAgent = clean(userAgent);
+        }
+
+        public static BrowserSession empty() {
+            return new BrowserSession(null, null, null, null);
+        }
+
+        private static String clean(String value) {
+            return value == null || value.isBlank() ? null : value;
+        }
+    }
+
     /** The resolved title and streams for a YouTube video. */
-    public record Resolution(String title, List<Stream> streams) {
+    public record Resolution(String title, List<Stream> streams, String streamUserAgent) {
+        public Resolution(String title, List<Stream> streams) {
+            this(title, streams, STREAM_USER_AGENT);
+        }
     }
 
     /** A single downloadable YouTube stream. */
@@ -111,49 +135,65 @@ public final class YouTubeExtractor {
 
     /** Resolves the title and streams available for the given YouTube page URL. */
     public Resolution resolve(String pageUrl) throws IOException {
+        return resolve(pageUrl, BrowserSession.empty());
+    }
+
+    /** Resolves a page using its live WebView session before falling back to Innertube. */
+    public Resolution resolve(String pageUrl, BrowserSession session) throws IOException {
         String videoId = videoId(pageUrl);
         if (videoId == null) throw new IOException("Not a recognizable YouTube link");
-        // A visitorData token is required so YouTube does not answer with LOGIN_REQUIRED
-        // ("Sign in to confirm you're not a bot") for the ANDROID_VR client. It is fetched
-        // lazily and refreshed once if the first attempt is still rejected as a bot.
-        String json = requestPlayer(videoId, ensureVisitorData(false));
+
+        BrowserSession browser = session == null ? BrowserSession.empty() : session;
+        List<Stream> pageStreams = parsePlayerResponse(browser.playerResponse());
+        if (!pageStreams.isEmpty()) {
+            String agent = browser.userAgent() == null ? STREAM_USER_AGENT : browser.userAgent();
+            return new Resolution(parseTitle(browser.playerResponse()), pageStreams, agent);
+        }
+
+        String visitor = browser.visitorData() == null
+                ? ensureVisitorData(false, browser.cookies()) : browser.visitorData();
+        String json = requestPlayer(videoId, visitor, browser);
         List<Stream> streams = parsePlayerResponse(json);
         if (streams.isEmpty() && isBotCheck(json)) {
-            json = requestPlayer(videoId, ensureVisitorData(true));
+            json = requestPlayer(videoId, ensureVisitorData(true, browser.cookies()), browser);
             streams = parsePlayerResponse(json);
         }
         if (streams.isEmpty()) throw new IOException(playabilityMessage(json));
-        return new Resolution(parseTitle(json), streams);
+        return new Resolution(parseTitle(json), streams, STREAM_USER_AGENT);
     }
 
-    private String requestPlayer(String videoId, String visitor) throws IOException {
+    private String requestPlayer(String videoId, String visitor, BrowserSession session) throws IOException {
         JSONObject body = requestBody(videoId, visitor);
-        Request request = new Request.Builder()
+        Request.Builder request = new Request.Builder()
                 .url(PLAYER_ENDPOINT)
                 .header("User-Agent", USER_AGENT)
                 .header("X-YouTube-Client-Name", "28")
                 .header("X-YouTube-Client-Version", CLIENT_VERSION)
-                .post(RequestBody.create(body.toString(), JSON))
-                .build();
-        try (Response response = client.newCall(request).execute()) {
+                .header("Origin", "https://www.youtube.com")
+                .header("Referer", "https://www.youtube.com/");
+        addSessionHeaders(request, visitor, session);
+        try (Response response = client.newCall(request
+                .post(RequestBody.create(body.toString(), JSON)).build()).execute()) {
             if (!response.isSuccessful()) throw new IOException("YouTube responded " + response.code());
             ResponseBody payload = response.body();
             return payload == null ? "" : payload.string();
         }
     }
 
-    private String ensureVisitorData(boolean forceRefresh) {
+    private String ensureVisitorData(boolean forceRefresh, String cookies) {
         String cached = visitorData;
         if (cached != null && !forceRefresh) return cached;
         try {
             JSONObject context = new JSONObject().put("client", clientContext());
             JSONObject body = new JSONObject().put("context", context);
-            Request request = new Request.Builder()
+            Request.Builder request = new Request.Builder()
                     .url(VISITOR_ID_ENDPOINT)
                     .header("User-Agent", USER_AGENT)
-                    .post(RequestBody.create(body.toString(), JSON))
-                    .build();
-            try (Response response = client.newCall(request).execute()) {
+                    .header("Origin", "https://www.youtube.com");
+            addSessionHeaders(request, null,
+                    new BrowserSession(cookies, null, null, null));
+            try (Response response = client.newCall(request
+                    .post(RequestBody.create(body.toString(), JSON)).build()).execute()) {
                 ResponseBody payload = response.body();
                 String json = payload == null ? "" : payload.string();
                 String token = new JSONObject(json)
@@ -164,6 +204,48 @@ public final class YouTubeExtractor {
         } catch (Exception ignored) {
         }
         return visitorData;
+    }
+
+    private static void addSessionHeaders(Request.Builder request, String visitor,
+                                          BrowserSession session) {
+        if (visitor != null && !visitor.isBlank()) request.header("X-Goog-Visitor-Id", visitor);
+        if (session == null || session.cookies() == null) return;
+        request.header("Cookie", session.cookies());
+        String authorization = authorizationHeader(session.cookies(), System.currentTimeMillis() / 1000L);
+        if (authorization != null) {
+            request.header("Authorization", authorization);
+            request.header("X-Goog-AuthUser", "0");
+            request.header("X-Origin", "https://www.youtube.com");
+        }
+    }
+
+    static String authorizationHeader(String cookies, long epochSeconds) {
+        String sapisid = cookieValue(cookies, "SAPISID");
+        if (sapisid == null) sapisid = cookieValue(cookies, "__Secure-3PAPISID");
+        if (sapisid == null) return null;
+        try {
+            String input = epochSeconds + " " + sapisid + " https://www.youtube.com";
+            byte[] digest = MessageDigest.getInstance("SHA-1")
+                    .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte value : digest) hex.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+            return "SAPISIDHASH " + epochSeconds + "_" + hex;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String cookieValue(String cookies, String name) {
+        if (cookies == null) return null;
+        for (String pair : cookies.split(";")) {
+            String value = pair.trim();
+            int separator = value.indexOf('=');
+            if (separator > 0 && name.equals(value.substring(0, separator))) {
+                String result = value.substring(separator + 1);
+                return result.isBlank() ? null : result;
+            }
+        }
+        return null;
     }
 
     private static boolean isBotCheck(String json) {
@@ -248,6 +330,9 @@ public final class YouTubeExtractor {
     }
 
     private static String playabilityMessage(String json) {
+        if (isBotCheck(json)) {
+            return "YouTube could not verify this browser session. Start the video and retry.";
+        }
         try {
             JSONObject status = new JSONObject(json).optJSONObject("playabilityStatus");
             if (status != null) {

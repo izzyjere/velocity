@@ -31,6 +31,7 @@ import zm.co.codelabs.adm.engine.model.ErrorCode;
 import zm.co.codelabs.adm.engine.model.ProbeResult;
 import zm.co.codelabs.adm.engine.model.TransferRequest;
 import zm.co.codelabs.adm.storage.PositionedFileWriter;
+import zm.co.codelabs.adm.storage.DownloadPublisher;
 import zm.co.codelabs.adm.storage.StorageCapacity;
 import zm.co.codelabs.adm.transport.TransportCall;
 import zm.co.codelabs.adm.transport.TransportClient;
@@ -57,15 +58,17 @@ public final class DownloadJob implements Runnable {
     private final Listener listener;
     private final TokenBucket globalLimiter;
     private final StorageCapacity storageCapacity;
+    private final DownloadPublisher publisher;
     private final AppLogStore logs;
 
-    public DownloadJob(long id, DownloadRepository repository, TransportClient transport, ExecutorService workers, TokenBucket globalLimiter, StorageCapacity storageCapacity, AppLogStore logs, Listener listener) {
+    public DownloadJob(long id, DownloadRepository repository, TransportClient transport, ExecutorService workers, TokenBucket globalLimiter, StorageCapacity storageCapacity, DownloadPublisher publisher, AppLogStore logs, Listener listener) {
         this.id = id;
         this.repository = repository;
         this.transport = transport;
         this.workers = workers;
         this.globalLimiter = globalLimiter;
         this.storageCapacity = storageCapacity;
+        this.publisher = publisher;
         this.logs = logs;
         this.listener = listener;
     }
@@ -124,7 +127,10 @@ public final class DownloadJob implements Runnable {
             if (record.checksumType != null && record.checksumValue != null
                     && !verifier.checksumMatches(partial, record.checksumType, record.checksumValue)) throw new IOException("Checksum mismatch");
             moveAtomically(partial, finalFile);
-            record.completedBytes = finalFile.length(); record.speedBytesPerSecond = 0;
+            long completedSize = finalFile.length();
+            android.net.Uri published = publisher.publish(finalFile, record.fileName, record.mimeType);
+            record.destination = published.toString();
+            record.completedBytes = completedSize; record.speedBytesPerSecond = 0;
             record.completedAt = System.currentTimeMillis();
             repository.update(record);
             repository.transition(id, DownloadState.VERIFYING, DownloadState.COMPLETED);

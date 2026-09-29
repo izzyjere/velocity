@@ -28,7 +28,7 @@ android {
 
     defaultConfig {
         applicationId = "zm.co.codelabs.adm"
-        minSdk = 26
+        minSdk = 29
         targetSdk = 36
         versionCode = configuredVersionCode.get()
         versionName = configuredVersionName.get()

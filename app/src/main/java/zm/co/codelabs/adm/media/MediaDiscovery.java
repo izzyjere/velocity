@@ -8,7 +8,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Classifies only direct, unprotected media resources that the download engine can store intact. */
+/**
+ * Classifies only direct, unprotected media resources that the download engine can store intact.
+ */
 public final class MediaDiscovery {
     private static final Set<String> MEDIA_EXTENSIONS = Set.of(
             "mp4", "webm", "mkv", "mov", "m4v", "avi", "mp3", "m4a", "aac", "ogg", "oga", "opus",
@@ -22,31 +24,36 @@ public final class MediaDiscovery {
             "netflix.com", "spotify.com", "music.apple.com", "deezer.com", "tidal.com"
     };
 
-    private MediaDiscovery() { }
+    private MediaDiscovery() {
+    }
 
     public static boolean isMediaPageUrl(String value) {
-        URL url = parse(value); if (url == null) return false;
+        return checkIfExists(value, MEDIA_PAGE_HOSTS);
+    }
+
+    private static boolean checkIfExists(String value, String[] arr) {
+        URL url = parse(value);
+        if (url == null) return false;
         String host = url.getHost().toLowerCase(Locale.ROOT);
-        for (String known : MEDIA_PAGE_HOSTS) if (host.equals(known) || host.endsWith("." + known)) return true;
+        for (String known : arr) if (host.equals(known) || host.endsWith("." + known)) return true;
         return false;
     }
 
     public static boolean isRestrictedPlatformPage(String value) {
-        URL url = parse(value); if (url == null) return false;
-        String host = url.getHost().toLowerCase(Locale.ROOT);
-        for (String restricted : RESTRICTED_HOSTS) if (host.equals(restricted) || host.endsWith("." + restricted)) return true;
-        return false;
+        return checkIfExists(value, RESTRICTED_HOSTS);
     }
 
     public static boolean isDirectMediaUrl(String value) {
-        URL url = parse(value); if (url == null || isRestrictedPlatformPage(value)) return false;
+        URL url = parse(value);
+        if (url == null || isRestrictedPlatformPage(value)) return false;
+        String query = url.getQuery();
+        String decoded = query == null ? "" : decode(query).toLowerCase(Locale.ROOT);
+        // A protected playback URL is not a downloadable file for this app.
+        if (containsProtectionMarker(decoded)) return false;
         String path = url.getPath().toLowerCase(Locale.ROOT);
         int dot = path.lastIndexOf('.');
         if (dot >= 0 && MEDIA_EXTENSIONS.contains(path.substring(dot + 1))) return true;
-        String query = url.getQuery();
         if (query == null) return false;
-        String decoded = decode(query).toLowerCase(Locale.ROOT);
-        if (decoded.contains("widevine") || decoded.contains("drm=") || decoded.contains("license=")) return false;
         return decoded.contains("mime=video/") || decoded.contains("mime=audio/")
                 || decoded.contains("content_type=video/") || decoded.contains("content_type=audio/")
                 || decoded.contains("type=video/") || decoded.contains("type=audio/")
@@ -54,8 +61,16 @@ public final class MediaDiscovery {
                 || hasMediaFormat(query);
     }
 
+    private static boolean containsProtectionMarker(String query) {
+        return query.contains("widevine") || query.contains("playready") || query.contains("fairplay")
+                || query.contains("license=") || query.contains("licenseurl=")
+                || query.contains("drm=") || query.contains("encrypted=true")
+                || query.contains("contentprotection");
+    }
+
     public static String label(String value) {
-        URL url = parse(value); if (url == null) return "Media file";
+        URL url = parse(value);
+        if (url == null) return "Media file";
         Map<String, String> query = queryParameters(url.getQuery());
         String type = query.get("mime");
         String itag = query.get("itag");
@@ -64,7 +79,8 @@ public final class MediaDiscovery {
             String quality = qualityForItag(itag);
             return quality == null ? kind + " · " + url.getHost() : kind + " " + quality + " · " + url.getHost();
         }
-        String path = url.getPath(); int slash = path.lastIndexOf('/');
+        String path = url.getPath();
+        int slash = path.lastIndexOf('/');
         String name = slash >= 0 ? path.substring(slash + 1) : path;
         if (name.isBlank()) name = "Media file";
         if (name.length() > 54) name = name.substring(0, 51) + "…";
@@ -91,8 +107,11 @@ public final class MediaDiscovery {
     }
 
     private static String decode(String value) {
-        try { return URLDecoder.decode(value, "UTF-8"); }
-        catch (Exception e) { return value; }
+        try {
+            return URLDecoder.decode(value, "UTF-8");
+        } catch (Exception e) {
+            return value;
+        }
     }
 
     private static String qualityForItag(String itag) {
@@ -111,6 +130,8 @@ public final class MediaDiscovery {
         try {
             URL url = new URL(value);
             return ("https".equalsIgnoreCase(url.getProtocol()) || "http".equalsIgnoreCase(url.getProtocol())) && !url.getHost().isBlank() ? url : null;
-        } catch (MalformedURLException | RuntimeException e) { return null; }
+        } catch (MalformedURLException | RuntimeException e) {
+            return null;
+        }
     }
 }

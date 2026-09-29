@@ -23,5 +23,6 @@ public final class MediaDiscoveryTest {
         assertTrue(MediaDiscovery.isDirectMediaUrl(media));
         assertEquals("Video 360p · rr1.googlevideo.com", MediaDiscovery.label(media));
         assertFalse(MediaDiscovery.isDirectMediaUrl(media + "&drm=widevine"));
+        assertFalse(MediaDiscovery.isDirectMediaUrl("https://cdn.example/movie.mp4?drm=widevine"));
     }
 }

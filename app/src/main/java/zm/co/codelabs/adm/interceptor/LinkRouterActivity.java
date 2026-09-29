@@ -16,6 +16,10 @@ public final class LinkRouterActivity extends Activity {
             ArrayList<CharSequence> many = source.getCharSequenceArrayListExtra(Intent.EXTRA_TEXT); if (many != null) for (CharSequence item : many) urls.addAll(UrlExtractor.extract(item.toString()));
         } else {
             CharSequence text = source.getCharSequenceExtra(Intent.EXTRA_TEXT); if (text != null) urls.addAll(UrlExtractor.extract(text.toString()));
+            if (urls.isEmpty() && source.getParcelableExtra(Intent.EXTRA_STREAM) != null) {
+                Object stream = source.getParcelableExtra(Intent.EXTRA_STREAM);
+                urls.addAll(UrlExtractor.extract(String.valueOf(stream)));
+            }
         }
         Intent target = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (urls.size() == 1 && MediaDiscovery.isMediaPageUrl(urls.get(0))) target.putExtra(MainActivity.EXTRA_BROWSER_URL, urls.get(0));

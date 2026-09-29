@@ -48,8 +48,6 @@ public final class MediaDiscovery {
         if (url == null || isRestrictedPlatformPage(value)) return false;
         String query = url.getQuery();
         String decoded = query == null ? "" : decode(query).toLowerCase(Locale.ROOT);
-        // A protected playback URL is not a downloadable file for this app.
-        if (containsProtectionMarker(decoded)) return false;
         String path = url.getPath().toLowerCase(Locale.ROOT);
         int dot = path.lastIndexOf('.');
         if (dot >= 0 && MEDIA_EXTENSIONS.contains(path.substring(dot + 1))) return true;
@@ -60,14 +58,6 @@ public final class MediaDiscovery {
                 || decoded.contains("response-content-type=video/") || decoded.contains("response-content-type=audio/")
                 || hasMediaFormat(query);
     }
-
-    private static boolean containsProtectionMarker(String query) {
-        return query.contains("widevine") || query.contains("playready") || query.contains("fairplay")
-                || query.contains("license=") || query.contains("licenseurl=")
-                || query.contains("drm=") || query.contains("encrypted=true")
-                || query.contains("contentprotection");
-    }
-
     public static String label(String value) {
         URL url = parse(value);
         if (url == null) return "Media file";

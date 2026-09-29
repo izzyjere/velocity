@@ -7,6 +7,7 @@ import zm.co.codelabs.adm.data.db.AppDatabase;
 import zm.co.codelabs.adm.data.repository.DownloadRepository;
 import zm.co.codelabs.adm.engine.DownloadCoordinator;
 import zm.co.codelabs.adm.storage.DestinationResolver;
+import zm.co.codelabs.adm.storage.DownloadPublisher;
 import zm.co.codelabs.adm.security.HeaderCipher;
 import zm.co.codelabs.adm.transport.FallbackTransport;
 import zm.co.codelabs.adm.transport.TransportClient;
@@ -46,7 +47,7 @@ public final class App extends Application implements Configuration.Provider {
         TransportClient transport;
         try { transport = new FallbackTransport(new CronetTransport(this), new OkHttpTransport()); }
         catch (RuntimeException e) { logs.error("Transport/Cronet initialization", e); transport = new OkHttpTransport(); }
-        coordinator = new DownloadCoordinator(repository, transport, new StorageCapacity(this), logs);
+        coordinator = new DownloadCoordinator(repository, transport, new StorageCapacity(this), new DownloadPublisher(this), logs);
         coordinator.setGlobalSpeedLimit(getSharedPreferences("settings", MODE_PRIVATE).getLong("speed_limit", 0));
         connectivity = new ConnectivityMonitor(this, coordinator);
         startup.execute(coordinator::recover);

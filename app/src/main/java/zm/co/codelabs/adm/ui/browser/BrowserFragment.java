@@ -49,7 +49,7 @@ public final class BrowserFragment extends Fragment {
         binding.web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { Uri uri = request.getUrl(); if ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme())) return false; return true; }
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) { mediaCandidates.clear(); if (binding != null) { setAddressBarVisible(true); binding.address.setText(url); updateMediaButton(url); } }
-            @Override public void onPageFinished(WebView view, String url) { if (binding == null) return; binding.address.setText(url); discoverDocumentMedia(view); updateMediaButton(url); }
+            @Override public void onPageFinished(WebView view, String url) { if (binding == null) return; binding.address.setText(url); discoverDocumentMedia(view); discoverPerformanceMedia(view); updateMediaButton(url); }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 Map<String, String> headers = allowedRequestHeaders(request.getRequestHeaders());
@@ -85,6 +85,16 @@ public final class BrowserFragment extends Fragment {
     }
     private void discoverDocumentMedia(WebView view) {
         String script = "(function(){try{const r=new Set();document.querySelectorAll('video,audio,source,a[download]').forEach(function(e){const u=e.currentSrc||e.src||e.href;if(u)r.add(u)});return JSON.stringify(Array.from(r).slice(0,50));}catch(e){return '[]';}})();";
+        view.evaluateJavascript(script, encoded -> {
+            if (binding == null || encoded == null) return;
+            try {
+                Object decoded = new JSONTokener(encoded).nextValue(); JSONArray values = new JSONArray(decoded instanceof String ? (String) decoded : "[]");
+                for (int i = 0; i < values.length(); i++) collectCandidate(values.optString(i), Map.of());
+            } catch (Exception ignored) { }
+        });
+    }
+    private void discoverPerformanceMedia(WebView view) {
+        String script = "(function(){try{const r=new Set();performance.getEntriesByType('resource').forEach(function(e){if(e&&e.name)r.add(e.name)});return JSON.stringify(Array.from(r).slice(-200));}catch(e){return '[]';}})();";
         view.evaluateJavascript(script, encoded -> {
             if (binding == null || encoded == null) return;
             try {

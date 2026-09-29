@@ -52,6 +52,7 @@
     <string name="update_install_failed">Android couldn’t install the update.</string>
     <string name="view_release">View release on GitHub</string>
     <string name="download_media">Download media</string>
+    <string name="show_browser_controls">Show address bar</string>
     <plurals name="downloadable_media_count"><item quantity="one">Download media (%1$d file)</item><item quantity="other">Download media (%1$d files)</item></plurals>
     <string name="choose_media">Choose media</string>
     <plurals name="media_files_found"><item quantity="one">%1$d downloadable audio or video file found</item><item quantity="other">%1$d downloadable audio or video files found</item></plurals>

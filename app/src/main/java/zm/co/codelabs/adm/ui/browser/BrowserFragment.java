@@ -9,7 +9,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.webkit.CookieManager;
-import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -72,6 +71,8 @@ public final class BrowserFragment extends Fragment {
         });
         binding.web.setOnLongClickListener(v -> { WebView.HitTestResult hit = binding.web.getHitTestResult(); String url = hit == null ? null : hit.getExtra(); if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) { intercept(url, settings.getUserAgentString(), Map.of()); return true; } return false; });
         binding.mediaDownload.setOnClickListener(v -> chooseMedia());
+        binding.showBrowserControls.setOnClickListener(v -> { accumulatedScroll = 0; setAddressBarVisible(true); });
+        androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.showBrowserControls, getString(R.string.show_browser_controls));
         binding.go.setOnClickListener(v -> navigate()); binding.address.setOnEditorActionListener((v, action, event) -> { if (event == null || event.getKeyCode() == KeyEvent.KEYCODE_ENTER) { navigate(); return true; } return false; });
         String initial = getArguments() == null ? null : getArguments().getString(ARG_URL); if (initial != null) { binding.address.setText(initial); updateMediaButton(initial); binding.web.loadUrl(initial); }
     }
@@ -123,6 +124,8 @@ public final class BrowserFragment extends Fragment {
     private void setAddressBarVisible(boolean visible) {
         if (binding == null || addressBarVisible == visible) return;
         addressBarVisible = visible;
+        binding.showBrowserControls.animate().cancel();
+        if (visible) binding.showBrowserControls.setVisibility(View.GONE);
         View[] controls = {binding.addressLayout, binding.go};
         for (View control : controls) {
             control.animate().cancel();
@@ -131,7 +134,7 @@ public final class BrowserFragment extends Fragment {
                 control.animate().alpha(1f).translationY(0f).setDuration(160).start();
             } else {
                 control.animate().alpha(0f).translationY(-control.getHeight() / 3f).setDuration(140).withEndAction(() -> {
-                    if (!addressBarVisible) { control.setVisibility(View.GONE); control.setAlpha(1f); control.setTranslationY(0f); }
+                    if (!addressBarVisible) { control.setVisibility(View.GONE); control.setAlpha(1f); control.setTranslationY(0f); binding.showBrowserControls.setVisibility(View.VISIBLE); }
                 }).start();
             }
         }
@@ -141,9 +144,13 @@ public final class BrowserFragment extends Fragment {
         for (Map.Entry<String, String> entry : source.entrySet()) if (entry.getKey().equalsIgnoreCase("Accept") || entry.getKey().equalsIgnoreCase("Accept-Language") || entry.getKey().equalsIgnoreCase("Origin")) result.put(entry.getKey(), entry.getValue());
         return result;
     }
-    private static final class MediaCandidate {
-        final String url; final String label; final Map<String, String> headers;
-        MediaCandidate(String url, String label, Map<String, String> headers) { this.url = url; this.label = label; this.headers = Map.copyOf(headers); }
-    }
+
+    private record MediaCandidate(String url, String label, Map<String, String> headers) {
+            private MediaCandidate(String url, String label, Map<String, String> headers) {
+                this.url = url;
+                this.label = label;
+                this.headers = Map.copyOf(headers);
+            }
+        }
     @Override public void onDestroyView() { binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
 }

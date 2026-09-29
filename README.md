@@ -1,6 +1,6 @@
 # Velocity Download Manager
 
-Velocity is a Java-only Android download manager for Android 8.0+ (API 26). It uses native Views and Material 3, Room-backed recovery, a secured WebView browser, user-consented share/open-with interception, and an adaptive multipart engine optimized for useful end-to-end throughput.
+Velocity is a Java-only Android download manager for Android 10+ (API 29). It uses native Views and Material 3, Room-backed recovery, a secured WebView browser, user-consented share/open-with interception, and an adaptive multipart engine optimized for useful end-to-end throughput.
 
 Developed by **Wisdom Jere** at **Codelabs Zambia**. GitHub: [@izzyjere](https://github.com/izzyjere).
 

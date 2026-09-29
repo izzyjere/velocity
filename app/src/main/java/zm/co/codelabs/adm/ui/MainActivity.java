@@ -29,6 +29,7 @@ import zm.co.codelabs.adm.platform.notification.DownloadNotifications;
 
 public final class MainActivity extends AppCompatActivity {
     public static final String EXTRA_URLS = "candidate_urls";
+    public static final String EXTRA_BROWSER_URL = "browser_url";
     private ActivityMainBinding binding;
     private final ArrayDeque<String> pendingUrls = new ArrayDeque<>();
     private final ActivityResultLauncher<String> notifications = registerForActivityResult(new ActivityResultContracts.RequestPermission(), ignored -> { });
@@ -53,7 +54,15 @@ public final class MainActivity extends AppCompatActivity {
             if (selected != null) select(selected);
         });
     }
-    private void consume(Intent intent) { ArrayList<String> urls = intent.getStringArrayListExtra(EXTRA_URLS); if (urls != null) pendingUrls.addAll(urls); showNextSharedUrl(); }
+    private void consume(Intent intent) {
+        String browserUrl = intent.getStringExtra(EXTRA_BROWSER_URL);
+        if (browserUrl != null) { intent.removeExtra(EXTRA_BROWSER_URL); openBrowser(browserUrl); return; }
+        ArrayList<String> urls = intent.getStringArrayListExtra(EXTRA_URLS); if (urls != null) pendingUrls.addAll(urls); showNextSharedUrl();
+    }
+    private void openBrowser(String url) {
+        binding.navigation.setSelectedItemId(R.id.nav_browser); binding.toolbar.setTitle(R.string.browser); binding.add.setVisibility(android.view.View.GONE);
+        getSupportFragmentManager().beginTransaction().replace(R.id.content, BrowserFragment.newInstance(url)).commit();
+    }
     private void showNextSharedUrl() { if (getSupportFragmentManager().findFragmentByTag(AddDownloadSheet.TAG) == null && !pendingUrls.isEmpty()) showAddDownload(pendingUrls.removeFirst(), Map.of()); }
     public void showAddDownload(String url, Map<String, String> headers) { AddDownloadSheet.newInstance(url, headers).show(getSupportFragmentManager(), AddDownloadSheet.TAG); }
     private boolean select(android.view.MenuItem item) {
@@ -65,7 +74,7 @@ public final class MainActivity extends AppCompatActivity {
         else if (id == R.id.nav_more) { fragment = new MoreFragment(); title = getString(R.string.more); }
         else { fragment = new DownloadsFragment(); title = getString(R.string.downloads); }
         binding.toolbar.setTitle(title);
-        binding.add.setVisibility(id == R.id.nav_downloads || id == R.id.nav_browser ? android.view.View.VISIBLE : android.view.View.GONE);
+        binding.add.setVisibility(id == R.id.nav_downloads ? android.view.View.VISIBLE : android.view.View.GONE);
         getSupportFragmentManager().beginTransaction().replace(R.id.content, fragment).commit(); return true;
     }
 }

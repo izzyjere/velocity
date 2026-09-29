@@ -8,7 +8,7 @@ Developed by **Wisdom Jere** at **Codelabs Zambia**. GitHub: [@izzyjere](https:/
 
 Version tags build, verify, sign, and publish an APK named `velocity-{version}.apk`. Release signing credentials are stored only as encrypted GitHub Actions secrets; keystores and local signing configuration are excluded from source control.
 
-[Download velocity-1.0.2.apk](https://github.com/izzyjere/velocity/releases/download/v1.0.2/velocity-1.0.2.apk)
+[Download velocity-1.1.0.apk](https://github.com/izzyjere/velocity/releases/download/v1.1.0/velocity-1.1.0.apk)
 
 Velocity can also check and install updates from **More → Check for updates**. The updater accepts only this repository's versioned release assets, verifies GitHub and published SHA-256 digests, checks package identity and signing-certificate continuity, and then uses Android's user-confirmed package installer.
 

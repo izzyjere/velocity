@@ -85,6 +85,10 @@ public final class BrowserFragment extends Fragment {
     }
     private void discoverDocumentMedia(WebView view) {
         String script = "(function(){try{const r=new Set();document.querySelectorAll('video,audio,source,a[download]').forEach(function(e){const u=e.currentSrc||e.src||e.href;if(u)r.add(u)});return JSON.stringify(Array.from(r).slice(0,50));}catch(e){return '[]';}})();";
+        evalJS(view, script);
+    }
+
+    private void evalJS(WebView view, String script) {
         view.evaluateJavascript(script, encoded -> {
             if (binding == null || encoded == null) return;
             try {
@@ -93,15 +97,10 @@ public final class BrowserFragment extends Fragment {
             } catch (Exception ignored) { }
         });
     }
+
     private void discoverPerformanceMedia(WebView view) {
         String script = "(function(){try{const r=new Set();performance.getEntriesByType('resource').forEach(function(e){if(e&&e.name)r.add(e.name)});return JSON.stringify(Array.from(r).slice(-200));}catch(e){return '[]';}})();";
-        view.evaluateJavascript(script, encoded -> {
-            if (binding == null || encoded == null) return;
-            try {
-                Object decoded = new JSONTokener(encoded).nextValue(); JSONArray values = new JSONArray(decoded instanceof String ? (String) decoded : "[]");
-                for (int i = 0; i < values.length(); i++) collectCandidate(values.optString(i), Map.of());
-            } catch (Exception ignored) { }
-        });
+        evalJS(view, script);
     }
     private void updateMediaButton(String pageUrl) {
         if (binding == null) return; int count = mediaCandidates.size();

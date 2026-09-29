@@ -11,6 +11,7 @@ import zm.co.codelabs.adm.data.repository.DownloadRepository;
 import zm.co.codelabs.adm.engine.model.DownloadState;
 import zm.co.codelabs.adm.transport.TransportClient;
 import zm.co.codelabs.adm.storage.StorageCapacity;
+import zm.co.codelabs.adm.storage.DownloadPublisher;
 import zm.co.codelabs.adm.platform.logging.AppLogStore;
 
 public final class DownloadCoordinator implements DownloadJob.Listener {
@@ -24,9 +25,10 @@ public final class DownloadCoordinator implements DownloadJob.Listener {
     private final ConcurrentLinkedQueue<Long> pendingStarts = new ConcurrentLinkedQueue<>();
     private final TokenBucket globalLimiter = new TokenBucket(0);
     private final StorageCapacity storageCapacity;
+    private final DownloadPublisher publisher;
     private final AppLogStore logs;
     private final CopyOnWriteArraySet<Observer> observers = new CopyOnWriteArraySet<>();
-    public DownloadCoordinator(DownloadRepository repository, TransportClient transport, StorageCapacity storageCapacity, AppLogStore logs) { this.repository = repository; this.transport = transport; this.storageCapacity = storageCapacity; this.logs = logs; }
+    public DownloadCoordinator(DownloadRepository repository, TransportClient transport, StorageCapacity storageCapacity, DownloadPublisher publisher, AppLogStore logs) { this.repository = repository; this.transport = transport; this.storageCapacity = storageCapacity; this.publisher = publisher; this.logs = logs; }
     public void addObserver(Observer observer) { observers.add(observer); }
     public void removeObserver(Observer observer) { observers.remove(observer); }
     public void setGlobalSpeedLimit(long bytesPerSecond) { globalLimiter.setRate(bytesPerSecond); }
@@ -43,7 +45,7 @@ public final class DownloadCoordinator implements DownloadJob.Listener {
         DownloadEntity item = repository.get(id); if (item == null) return;
         DownloadState state = DownloadState.valueOf(item.state);
         if (!(state == DownloadState.NEW || state == DownloadState.QUEUED || state == DownloadState.PAUSED)) return;
-        DownloadJob job = new DownloadJob(id, repository, transport, segments, globalLimiter, storageCapacity, logs, this); active.put(id, job); jobs.submit(job);
+        DownloadJob job = new DownloadJob(id, repository, transport, segments, globalLimiter, storageCapacity, publisher, logs, this); active.put(id, job); jobs.submit(job);
     }
     private void cancelIdle(long id) { DownloadEntity item = repository.get(id); if (item == null) return; DownloadState state = DownloadState.valueOf(item.state); if (state.canTransitionTo(DownloadState.CANCELED)) repository.transition(id, state, DownloadState.CANCELED); }
     private void drainQueue() { while (active.size() < 3 && !pendingStarts.isEmpty()) { Long id = pendingStarts.poll(); if (id != null) startInternal(id); } if (active.size() >= 3) return; for (DownloadEntity item : repository.queued()) { if (active.size() >= 3) break; startInternal(item.id); } }

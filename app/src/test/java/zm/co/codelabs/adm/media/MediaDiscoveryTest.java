@@ -17,7 +17,8 @@ public final class MediaDiscoveryTest {
 
     @Test public void routesKnownMediaPagesAndRecognizesAuthorizedMediaRequest() {
         assertTrue(MediaDiscovery.isMediaPageUrl("https://www.youtube.com/watch?v=abc"));
-        assertTrue(MediaDiscovery.isRestrictedPlatformPage("https://youtu.be/abc"));
+        assertFalse(MediaDiscovery.isRestrictedPlatformPage("https://youtu.be/abc"));
+        assertFalse(MediaDiscovery.isRestrictedPlatformPage("https://www.youtube.com/watch?v=abc"));
         String media = "https://rr1.googlevideo.com/videoplayback?mime=video%2Fmp4&itag=18&clen=1234";
         assertTrue(MediaDiscovery.isDirectMediaUrl(media));
         assertEquals("Video 360p · rr1.googlevideo.com", MediaDiscovery.label(media));

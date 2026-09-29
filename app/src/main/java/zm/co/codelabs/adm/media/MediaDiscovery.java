@@ -19,8 +19,7 @@ public final class MediaDiscovery {
             "music.apple.com", "deezer.com", "tidal.com", "audiomack.com", "mixcloud.com"
     };
     private static final String[] RESTRICTED_HOSTS = {
-            "youtube.com", "youtu.be", "youtube-nocookie.com", "netflix.com", "spotify.com",
-            "music.apple.com", "deezer.com", "tidal.com"
+            "netflix.com", "spotify.com", "music.apple.com", "deezer.com", "tidal.com"
     };
 
     private MediaDiscovery() { }

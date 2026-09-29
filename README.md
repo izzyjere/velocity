@@ -8,7 +8,9 @@ Developed by **Wisdom Jere** at **Codelabs Zambia**. GitHub: [@izzyjere](https:/
 
 Version tags build, verify, sign, and publish an APK named `velocity-{version}.apk`. Release signing credentials are stored only as encrypted GitHub Actions secrets; keystores and local signing configuration are excluded from source control.
 
-[Download velocity-1.1.0.apk](https://github.com/izzyjere/velocity/releases/download/v1.1.0/velocity-1.1.0.apk)
+**Current release: v0.0.1**
+
+[Download velocity-0.0.1.apk](https://github.com/izzyjere/velocity/releases/download/v0.0.1/velocity-0.0.1.apk)
 
 Velocity can also check and install updates from **More → Check for updates**. The updater accepts only this repository's versioned release assets, verifies GitHub and published SHA-256 digests, checks package identity and signing-certificate continuity, and then uses Android's user-confirmed package installer.
 
@@ -49,7 +51,7 @@ UI -> DownloadRepository -> DownloadCoordinator -> DownloadJob
 - Browser cookies and request headers required for resume are encrypted with an Android Keystore AES-GCM key.
 - WebView file/content access and mixed content are disabled, Safe Browsing is enabled, and no JavaScript bridge is exposed.
 - Filenames and canonical destinations are validated against traversal, reserved names, control characters, and collisions.
-- Files are private to the app's scoped external directory until the user opens, shares, or exports them through a content URI.
+- Active transfers use app-private temporary storage for safe multipart/resume writes. Verified downloads are published to `Downloads/Velocity` by default and organized into Music, Videos, Documents, Compressed, Images, Apps, and Other folders. The root destination can be changed from **More → Download location**.
 
 ## Build and verification
 

@@ -23,6 +23,7 @@ public final class MediaDiscovery {
     private static final String[] RESTRICTED_HOSTS = {
             "netflix.com", "spotify.com", "music.apple.com", "deezer.com", "tidal.com"
     };
+    private static final String[] YOUTUBE_HOSTS = {"youtube.com", "youtu.be", "youtube-nocookie.com"};
 
     private MediaDiscovery() {
     }
@@ -41,6 +42,10 @@ public final class MediaDiscovery {
 
     public static boolean isRestrictedPlatformPage(String value) {
         return checkIfExists(value, RESTRICTED_HOSTS);
+    }
+
+    public static boolean isYouTubeUrl(String value) {
+        return checkIfExists(value, YOUTUBE_HOSTS);
     }
 
     public static boolean isDirectMediaUrl(String value) {

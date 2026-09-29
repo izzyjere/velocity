@@ -28,12 +28,18 @@ public final class AddDownloadSheet extends BottomSheetDialogFragment {
     private static final ExecutorService IO = Executors.newSingleThreadExecutor(r -> new Thread(r, "add-download"));
     private SheetAddDownloadBinding binding;
     public static AddDownloadSheet newInstance(String url, Map<String, String> headers) {
+        return newInstance(url, headers, null);
+    }
+    public static AddDownloadSheet newInstance(String url, Map<String, String> headers, String suggestedName) {
         AddDownloadSheet sheet = new AddDownloadSheet(); Bundle args = new Bundle(); args.putString("url", url);
+        if (suggestedName != null) args.putString("name", suggestedName);
         Bundle values = new Bundle(); headers.forEach(values::putString); args.putBundle("headers", values); sheet.setArguments(args); return sheet;
     }
     @NonNull @Override public Dialog onCreateDialog(Bundle state) {
         BottomSheetDialog dialog = new BottomSheetDialog(requireContext()); binding = SheetAddDownloadBinding.inflate(LayoutInflater.from(requireContext())); dialog.setContentView(binding.getRoot());
-        String initial = requireArguments().getString("url", ""); binding.url.setText(initial); binding.name.setText(suggestedName(initial));
+        String initial = requireArguments().getString("url", ""); binding.url.setText(initial);
+        String providedName = requireArguments().getString("name", null);
+        binding.name.setText(providedName != null && !providedName.isBlank() ? FilenameSanitizer.sanitize(providedName) : suggestedName(initial));
         String[] modes = {"Auto (recommended)", "1", "2", "4", "8", "12", "16"}; binding.connections.setAdapter(new ArrayAdapter<>(requireContext(), android.R.layout.simple_dropdown_item_1line, modes)); binding.connections.setText(modes[0], false);
         binding.wifiOnly.setChecked(requireContext().getSharedPreferences("settings", android.content.Context.MODE_PRIVATE).getBoolean("wifi_only", false));
         binding.start.setOnClickListener(v -> submit(true)); binding.queue.setOnClickListener(v -> submit(false)); return dialog;

@@ -20,7 +20,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.json.JSONArray;
 import org.json.JSONTokener;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
@@ -31,6 +34,7 @@ import zm.co.codelabs.adm.databinding.FragmentBrowserBinding;
 import zm.co.codelabs.adm.ui.MainActivity;
 import zm.co.codelabs.adm.R;
 import zm.co.codelabs.adm.media.MediaDiscovery;
+import zm.co.codelabs.adm.media.YouTubeExtractor;
 
 public final class BrowserFragment extends Fragment {
     private static final String ARG_URL = "initial_url";
@@ -39,6 +43,9 @@ public final class BrowserFragment extends Fragment {
     private final LinkedHashMap<String, MediaCandidate> mediaCandidates = new LinkedHashMap<>();
     private boolean addressBarVisible = true;
     private int accumulatedScroll;
+    private final ExecutorService extractionExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "youtube-extract"));
+    private final YouTubeExtractor youTubeExtractor = new YouTubeExtractor();
+    private boolean extracting;
     public static BrowserFragment newInstance(String url) { BrowserFragment fragment = new BrowserFragment(); Bundle args = new Bundle(); args.putString(ARG_URL, url); fragment.setArguments(args); return fragment; }
     @Nullable @Override public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle state) { binding = FragmentBrowserBinding.inflate(inflater, container, false); return binding.getRoot(); }
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
@@ -111,6 +118,8 @@ public final class BrowserFragment extends Fragment {
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.mediaDownload, description);
     }
     private void chooseMedia() {
+        String currentUrl = binding.web.getUrl();
+        if (mediaCandidates.isEmpty() && MediaDiscovery.isYouTubeUrl(currentUrl) && YouTubeExtractor.videoId(currentUrl) != null) { resolveYouTube(currentUrl); return; }
         MediaCandidate[] candidates = mediaCandidates.values().toArray(new MediaCandidate[0]);
         if (candidates.length == 0) { new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.no_direct_media_title).setMessage(R.string.no_direct_media_message).setPositiveButton(android.R.string.ok, null).show(); return; }
         if (candidates.length == 1) { download(candidates[0]); return; }
@@ -129,6 +138,45 @@ public final class BrowserFragment extends Fragment {
         dialog.show();
     }
     private void download(MediaCandidate candidate) { intercept(candidate.url, binding.web.getSettings().getUserAgentString(), candidate.headers); }
+    private void resolveYouTube(String pageUrl) {
+        if (extracting) return;
+        extracting = true;
+        binding.loading.setVisibility(View.VISIBLE); binding.loading.setIndeterminate(true);
+        extractionExecutor.execute(() -> {
+            YouTubeExtractor.Resolution resolution = null; String error = null;
+            try { resolution = youTubeExtractor.resolve(pageUrl); } catch (Exception e) { error = e.getMessage(); }
+            final YouTubeExtractor.Resolution result = resolution; final String failure = error;
+            if (binding == null) return;
+            binding.getRoot().post(() -> {
+                extracting = false;
+                if (binding == null) return;
+                binding.loading.setIndeterminate(false); binding.loading.setVisibility(View.GONE);
+                if (result == null) { new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.no_direct_media_title).setMessage(failure == null ? getString(R.string.no_direct_media_message) : failure).setPositiveButton(android.R.string.ok, null).show(); return; }
+                showYouTubeStreams(result);
+            });
+        });
+    }
+    private void showYouTubeStreams(YouTubeExtractor.Resolution resolution) {
+        List<YouTubeExtractor.Stream> streams = resolution.streams();
+        Map<String, String> headers = Map.of("User-Agent", YouTubeExtractor.STREAM_USER_AGENT);
+        if (streams.size() == 1) { downloadStream(streams.get(0), resolution.title(), headers); return; }
+        BottomSheetMediaChooserBinding chooser = BottomSheetMediaChooserBinding.inflate(getLayoutInflater());
+        chooser.mediaSummary.setText(getResources().getQuantityString(R.plurals.media_files_found, streams.size(), streams.size()));
+        int margin = Math.round(6 * getResources().getDisplayMetrics().density);
+        for (YouTubeExtractor.Stream stream : streams) {
+            MaterialButton option = new MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
+            option.setText(stream.label()); option.setAllCaps(false); option.setGravity(Gravity.CENTER_VERTICAL | Gravity.START); option.setIconResource(R.drawable.ic_download); option.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT); params.setMargins(0, margin, 0, margin); option.setLayoutParams(params);
+            chooser.mediaOptions.addView(option);
+        }
+        ViewGroup.LayoutParams scrollParams = chooser.mediaListScroll.getLayoutParams(); scrollParams.height = Math.round(Math.min(320, streams.size() * 64) * getResources().getDisplayMetrics().density); chooser.mediaListScroll.setLayoutParams(scrollParams);
+        BottomSheetDialog dialog = new BottomSheetDialog(requireContext()); dialog.setContentView(chooser.getRoot());
+        for (int i = 0; i < streams.size(); i++) { YouTubeExtractor.Stream stream = streams.get(i); chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); downloadStream(stream, resolution.title(), headers); }); }
+        dialog.show();
+    }
+    private void downloadStream(YouTubeExtractor.Stream stream, String title, Map<String, String> headers) {
+        ((MainActivity) requireActivity()).showAddDownload(stream.url(), headers, stream.suggestedFileName(title));
+    }
     private void setAddressBarVisible(boolean visible) {
         if (binding == null || addressBarVisible == visible) return;
         addressBarVisible = visible;
@@ -159,5 +207,5 @@ public final class BrowserFragment extends Fragment {
                 this.headers = Map.copyOf(headers);
             }
         }
-    @Override public void onDestroyView() { ((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { }); binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
+    @Override public void onDestroyView() { ((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { }); extractionExecutor.shutdownNow(); binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
 }

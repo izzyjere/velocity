@@ -65,6 +65,7 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void showNextSharedUrl() { if (getSupportFragmentManager().findFragmentByTag(AddDownloadSheet.TAG) == null && !pendingUrls.isEmpty()) showAddDownload(pendingUrls.removeFirst(), Map.of()); }
     public void showAddDownload(String url, Map<String, String> headers) { AddDownloadSheet.newInstance(url, headers).show(getSupportFragmentManager(), AddDownloadSheet.TAG); }
+    public void showAddDownload(String url, Map<String, String> headers, String suggestedName) { AddDownloadSheet.newInstance(url, headers, suggestedName).show(getSupportFragmentManager(), AddDownloadSheet.TAG); }
     public void setBrowserControlsReveal(boolean visible, Runnable action) {
         android.view.MenuItem item = binding.toolbar.getMenu().findItem(R.id.action_show_browser_controls);
         if (item == null) {

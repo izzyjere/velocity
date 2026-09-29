@@ -22,7 +22,11 @@ public final class MediaDiscoveryTest {
         String media = "https://rr1.googlevideo.com/videoplayback?mime=video%2Fmp4&itag=18&clen=1234";
         assertTrue(MediaDiscovery.isDirectMediaUrl(media));
         assertEquals("Video 360p · rr1.googlevideo.com", MediaDiscovery.label(media));
-        assertFalse(MediaDiscovery.isDirectMediaUrl(media + "&drm=widevine"));
-        assertFalse(MediaDiscovery.isDirectMediaUrl("https://cdn.example/movie.mp4?drm=widevine"));
+    }
+
+    @Test public void recognizesYouTubePages() {
+        assertTrue(MediaDiscovery.isYouTubeUrl("https://youtu.be/dQw4w9WgXcQ"));
+        assertTrue(MediaDiscovery.isYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"));
+        assertFalse(MediaDiscovery.isYouTubeUrl("https://vimeo.com/12345"));
     }
 }

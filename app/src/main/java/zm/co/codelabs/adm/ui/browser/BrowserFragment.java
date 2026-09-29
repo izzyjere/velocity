@@ -71,8 +71,7 @@ public final class BrowserFragment extends Fragment {
         });
         binding.web.setOnLongClickListener(v -> { WebView.HitTestResult hit = binding.web.getHitTestResult(); String url = hit == null ? null : hit.getExtra(); if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) { intercept(url, settings.getUserAgentString(), Map.of()); return true; } return false; });
         binding.mediaDownload.setOnClickListener(v -> chooseMedia());
-        binding.showBrowserControls.setOnClickListener(v -> { accumulatedScroll = 0; setAddressBarVisible(true); });
-        androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.showBrowserControls, getString(R.string.show_browser_controls));
+        ((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { });
         binding.go.setOnClickListener(v -> navigate()); binding.address.setOnEditorActionListener((v, action, event) -> { if (event == null || event.getKeyCode() == KeyEvent.KEYCODE_ENTER) { navigate(); return true; } return false; });
         String initial = getArguments() == null ? null : getArguments().getString(ARG_URL); if (initial != null) { binding.address.setText(initial); updateMediaButton(initial); binding.web.loadUrl(initial); }
     }
@@ -124,8 +123,7 @@ public final class BrowserFragment extends Fragment {
     private void setAddressBarVisible(boolean visible) {
         if (binding == null || addressBarVisible == visible) return;
         addressBarVisible = visible;
-        binding.showBrowserControls.animate().cancel();
-        if (visible) binding.showBrowserControls.setVisibility(View.GONE);
+        ((MainActivity) requireActivity()).setBrowserControlsReveal(!visible, () -> { accumulatedScroll = 0; setAddressBarVisible(true); });
         View[] controls = {binding.addressLayout, binding.go};
         for (View control : controls) {
             control.animate().cancel();
@@ -134,7 +132,7 @@ public final class BrowserFragment extends Fragment {
                 control.animate().alpha(1f).translationY(0f).setDuration(160).start();
             } else {
                 control.animate().alpha(0f).translationY(-control.getHeight() / 3f).setDuration(140).withEndAction(() -> {
-                    if (!addressBarVisible) { control.setVisibility(View.GONE); control.setAlpha(1f); control.setTranslationY(0f); binding.showBrowserControls.setVisibility(View.VISIBLE); }
+                    if (!addressBarVisible) { control.setVisibility(View.GONE); control.setAlpha(1f); control.setTranslationY(0f); }
                 }).start();
             }
         }
@@ -152,5 +150,5 @@ public final class BrowserFragment extends Fragment {
                 this.headers = Map.copyOf(headers);
             }
         }
-    @Override public void onDestroyView() { binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
+    @Override public void onDestroyView() { ((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { }); binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
 }

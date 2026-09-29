@@ -65,6 +65,16 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void showNextSharedUrl() { if (getSupportFragmentManager().findFragmentByTag(AddDownloadSheet.TAG) == null && !pendingUrls.isEmpty()) showAddDownload(pendingUrls.removeFirst(), Map.of()); }
     public void showAddDownload(String url, Map<String, String> headers) { AddDownloadSheet.newInstance(url, headers).show(getSupportFragmentManager(), AddDownloadSheet.TAG); }
+    public void setBrowserControlsReveal(boolean visible, Runnable action) {
+        android.view.MenuItem item = binding.toolbar.getMenu().findItem(R.id.action_show_browser_controls);
+        if (item == null) {
+            item = binding.toolbar.getMenu().add(android.view.Menu.NONE, R.id.action_show_browser_controls, android.view.Menu.NONE, R.string.show_browser_controls);
+            android.graphics.drawable.Drawable icon = androidx.appcompat.content.res.AppCompatResources.getDrawable(this, R.drawable.ic_expand_more);
+            if (icon != null) { icon = androidx.core.graphics.drawable.DrawableCompat.wrap(icon.mutate()); androidx.core.graphics.drawable.DrawableCompat.setTint(icon, com.google.android.material.color.MaterialColors.getColor(binding.toolbar, com.google.android.material.R.attr.colorOnSurface)); }
+            item.setIcon(icon); item.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+        }
+        item.setVisible(visible); item.setOnMenuItemClickListener(clicked -> { action.run(); return true; });
+    }
     private boolean select(android.view.MenuItem item) {
         Fragment fragment; String title;
         int id = item.getItemId();
@@ -74,6 +84,7 @@ public final class MainActivity extends AppCompatActivity {
         else if (id == R.id.nav_more) { fragment = new MoreFragment(); title = getString(R.string.more); }
         else { fragment = new DownloadsFragment(); title = getString(R.string.downloads); }
         binding.toolbar.setTitle(title);
+        if (id != R.id.nav_browser) setBrowserControlsReveal(false, () -> { });
         binding.add.setVisibility(id == R.id.nav_downloads ? android.view.View.VISIBLE : android.view.View.GONE);
         getSupportFragmentManager().beginTransaction().replace(R.id.content, fragment).commit(); return true;
     }

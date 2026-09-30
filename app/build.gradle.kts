@@ -93,6 +93,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
     implementation("androidx.preference:preference:1.2.1")
     implementation("androidx.webkit:webkit:1.17.1")
+    implementation("androidx.javascriptengine:javascriptengine:1.1.1")
     implementation("androidx.work:work-runtime:2.12.0")
     implementation("androidx.room:room-runtime:2.8.5")
     annotationProcessor("androidx.room:room-compiler:2.8.5")

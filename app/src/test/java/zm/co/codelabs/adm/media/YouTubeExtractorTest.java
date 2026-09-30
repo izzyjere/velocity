@@ -6,6 +6,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.Test;
 
 public final class YouTubeExtractorTest {
@@ -62,6 +64,43 @@ public final class YouTubeExtractorTest {
         assertEquals("Browser title", result.title());
         assertEquals(1, result.streams().size());
         assertEquals("Browser UA", result.streamUserAgent());
+    }
+
+    @Test public void protectsMwebStreamsWithVideoBoundPoToken() throws Exception {
+        String json = "{\"videoDetails\":{\"title\":\"Protected audio\"},"
+                + "\"streamingData\":{\"adaptiveFormats\":[{\"itag\":140,"
+                + "\"url\":\"https://rr1.googlevideo.com/videoplayback?c=MWEB&itag=140\","
+                + "\"mimeType\":\"audio/mp4\",\"contentLength\":\"6261568\"}]}}";
+        YouTubeExtractor.BrowserSession session = new YouTubeExtractor.BrowserSession(
+                null, "visitor", json.replace("&itag=140", "&n=raw-value&itag=140"),
+                "Browser UA", "transformed-value");
+
+        assertTrue(YouTubeExtractor.requiresWebPoToken(session));
+        YouTubeExtractor.Resolution result = new YouTubeExtractor().resolve(
+                "https://m.youtube.com/watch?v=Q3XMFsrl4ws", session, "proof-token");
+
+        assertEquals(1, result.streams().size());
+        assertTrue(result.streams().get(0).url().contains("pot=proof-token"));
+        assertTrue(result.streams().get(0).url().contains("n=transformed-value"));
+        assertEquals("Browser UA", result.streamUserAgent());
+    }
+
+    @Test public void transformsEachDistinctStreamNValueIndependently() throws Exception {
+        String json = "{\"videoDetails\":{\"title\":\"Distinct signatures\"},"
+                + "\"streamingData\":{\"adaptiveFormats\":["
+                + "{\"itag\":140,\"url\":\"https://rr1.googlevideo.com/videoplayback?c=MWEB&n=audio-raw\",\"mimeType\":\"audio/mp4\"},"
+                + "{\"itag\":137,\"url\":\"https://rr1.googlevideo.com/videoplayback?c=MWEB&n=video-raw\",\"mimeType\":\"video/mp4\"}]}}";
+        YouTubeExtractor.BrowserSession session = new YouTubeExtractor.BrowserSession(
+                null, "visitor", json, "Browser UA");
+
+        assertEquals(Set.of("audio-raw", "video-raw"),
+                YouTubeExtractor.rawNValues(session));
+        YouTubeExtractor.Resolution result = new YouTubeExtractor().resolve(
+                "https://m.youtube.com/watch?v=Q3XMFsrl4ws", session, "proof-token",
+                Map.of("audio-raw", "audio-signed", "video-raw", "video-signed"));
+
+        assertTrue(result.streams().get(0).url().contains("n=audio-signed"));
+        assertTrue(result.streams().get(1).url().contains("n=video-signed"));
     }
 
     @Test public void createsYouTubeSessionAuthorizationWithoutExposingCookieValue() {

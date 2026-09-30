@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <script>
+        function runBotGuard(challenge) {
+            const source = challenge.interpreterJavascript;
+            if (!source) throw new Error("Missing BotGuard interpreter");
+            new Function(source)();
+
+            const vm = globalThis[challenge.globalName];
+            if (!vm || !vm.a) throw new Error("BotGuard VM unavailable");
+
+            let functions = null;
+            const ready = new Promise((resolve, reject) => {
+                const started = Date.now();
+                const timer = setInterval(() => {
+                    if (functions && functions.snapshot) {
+                        clearInterval(timer);
+                        resolve();
+                    } else if (Date.now() - started > 10000) {
+                        clearInterval(timer);
+                        reject(new Error("BotGuard initialization timed out"));
+                    }
+                }, 2);
+            });
+
+            vm.a(challenge.program, function (snapshot, shutdown, passEvent, checkCamera) {
+                functions = {snapshot: snapshot, shutdown: shutdown,
+                    passEvent: passEvent, checkCamera: checkCamera};
+            }, true, undefined, function () {}, [[], []], undefined, false, undefined);
+
+            return ready.then(() => new Promise((resolve, reject) => {
+                const signals = [];
+                functions.snapshot(resolve, [null, null, signals, null]);
+                globalThis.velocityPoSignals = signals;
+            }));
+        }
+
+        async function mintPoToken(integrityToken, identifierBytes) {
+            const getMinter = globalThis.velocityPoSignals && globalThis.velocityPoSignals[0];
+            if (typeof getMinter !== "function") throw new Error("PO minter unavailable");
+            const mint = await getMinter(integrityToken);
+            if (typeof mint !== "function") throw new Error("PO mint callback unavailable");
+            const token = await mint(identifierBytes);
+            if (!(token instanceof Uint8Array)) throw new Error("Invalid PO token result");
+            return Array.from(token).join(",");
+        }
+    </script>
+</head>
+<body></body>
+</html>

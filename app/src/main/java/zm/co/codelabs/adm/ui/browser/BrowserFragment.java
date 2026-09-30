@@ -36,6 +36,7 @@ import zm.co.codelabs.adm.ui.MainActivity;
 import zm.co.codelabs.adm.R;
 import zm.co.codelabs.adm.media.MediaDiscovery;
 import zm.co.codelabs.adm.media.YouTubeExtractor;
+import zm.co.codelabs.adm.media.YouTubePoTokenProvider;
 
 public final class BrowserFragment extends Fragment {
     private static final String ARG_URL = "initial_url";
@@ -46,7 +47,14 @@ public final class BrowserFragment extends Fragment {
             "if(!p&&window.ytplayer&&ytplayer.config&&ytplayer.config.args){" +
             "p=ytplayer.config.args.raw_player_response||ytplayer.config.args.player_response||null;}" +
             "var v='';if(window.ytcfg&&typeof ytcfg.get==='function'){v=ytcfg.get('VISITOR_DATA')||'';}" +
-            "return JSON.stringify({playerResponse:typeof p==='string'?p:(p?JSON.stringify(p):''),visitorData:v});" +
+            "var playerJs='';try{playerJs=(window.ytplayer&&ytplayer.config&&ytplayer.config.assets&&ytplayer.config.assets.js)||" +
+            "(window.ytcfg&&typeof ytcfg.get==='function'&&ytcfg.get('PLAYER_JS_URL'))||'';}catch(x){}" +
+            "var pj=typeof p==='string'?JSON.parse(p):p;var rawN='';try{" +
+            "var fs=[...((pj&&pj.streamingData&&pj.streamingData.formats)||[])," +
+            "...((pj&&pj.streamingData&&pj.streamingData.adaptiveFormats)||[])];" +
+            "for(var f=0;f<fs.length;f++){if(fs[f].url){var fu=new URL(fs[f].url);" +
+            "rawN=fu.searchParams.get('n')||'';if(rawN)break;}}}catch(x){}" +
+            "return JSON.stringify({playerResponse:typeof p==='string'?p:(p?JSON.stringify(p):''),visitorData:v,rawN:rawN,playerJsUrl:playerJs});" +
             "}catch(e){return '{}';}})();";
     private FragmentBrowserBinding binding;
     private final LinkedHashMap<String, MediaCandidate> mediaCandidates = new LinkedHashMap<>();
@@ -54,6 +62,7 @@ public final class BrowserFragment extends Fragment {
     private int accumulatedScroll;
     private final ExecutorService extractionExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "youtube-extract"));
     private final YouTubeExtractor youTubeExtractor = new YouTubeExtractor();
+    private YouTubePoTokenProvider poTokenProvider;
     private boolean extracting;
     private String pendingUrl;
     public static BrowserFragment newInstance(String url) { BrowserFragment fragment = new BrowserFragment(); Bundle args = new Bundle(); args.putString(ARG_URL, url); fragment.setArguments(args); return fragment; }
@@ -69,6 +78,7 @@ public final class BrowserFragment extends Fragment {
     @SuppressWarnings("deprecation")
     @Override public void onViewCreated(@NonNull View view, @Nullable Bundle state) {
         WebSettings settings = binding.web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(false);
+        poTokenProvider = new YouTubePoTokenProvider(requireContext());
         settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW); settings.setSafeBrowsingEnabled(true); settings.setMediaPlaybackRequiresUserGesture(true);
         CookieManager cookies = CookieManager.getInstance(); cookies.setAcceptCookie(true); cookies.setAcceptThirdPartyCookies(binding.web, true);
         binding.web.setWebViewClient(new WebViewClient() {
@@ -170,7 +180,23 @@ public final class BrowserFragment extends Fragment {
     private void resolveYouTubeInBackground(String pageUrl, YouTubeExtractor.BrowserSession session) {
         extractionExecutor.execute(() -> {
             YouTubeExtractor.Resolution resolution = null; String error = null;
-            try { resolution = youTubeExtractor.resolve(pageUrl, session); } catch (Exception e) { error = e.getMessage(); }
+            try {
+                YouTubeExtractor.BrowserSession resolvedSession = session;
+                String poToken = null;
+                Map<String, String> transformedNs = Map.of();
+                if (YouTubeExtractor.requiresWebPoToken(resolvedSession)) {
+                    String videoId = YouTubeExtractor.videoId(pageUrl);
+                    if (videoId == null) throw new java.io.IOException("Not a recognizable YouTube link");
+                    poToken = poTokenProvider.tokenFor(videoId);
+                    transformedNs = new LinkedHashMap<>();
+                    for (String rawN : YouTubeExtractor.rawNValues(resolvedSession)) {
+                        transformedNs.put(rawN, poTokenProvider.transformN(rawN,
+                                resolvedSession.playerJsUrl()));
+                    }
+                }
+                resolution = youTubeExtractor.resolve(pageUrl, resolvedSession, poToken,
+                        transformedNs);
+            } catch (Exception e) { error = e.getMessage(); }
             final YouTubeExtractor.Resolution result = resolution; final String failure = error;
             if (binding == null) return;
             binding.getRoot().post(() -> {
@@ -190,7 +216,8 @@ public final class BrowserFragment extends Fragment {
             JSONObject values = new JSONObject(snapshot);
             return new YouTubeExtractor.BrowserSession(cookies,
                     values.optString("visitorData", null),
-                    values.optString("playerResponse", null), userAgent);
+                    values.optString("playerResponse", null), userAgent,
+                    values.optString("rawN", null), values.optString("playerJsUrl", null), null);
         } catch (Exception ignored) {
             return new YouTubeExtractor.BrowserSession(cookies, null, null, userAgent);
         }
@@ -257,5 +284,5 @@ public final class BrowserFragment extends Fragment {
                 this.headers = Map.copyOf(headers);
             }
         }
-    @Override public void onDestroyView() { ((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { }); extractionExecutor.shutdownNow(); binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
+    @Override public void onDestroyView() { ((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { }); extractionExecutor.shutdownNow(); if (poTokenProvider != null) { poTokenProvider.close(); poTokenProvider = null; } binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
 }

@@ -56,6 +56,7 @@
         <activity android:name=".ui.update.UpdateActivity" android:exported="false" />
         <service android:name=".platform.service.DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".platform.service.DownloadJobService" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".platform.service.YouTubeAdaptiveDownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".platform.boot.BootReceiver" android:enabled="true" android:exported="true">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
         </receiver>

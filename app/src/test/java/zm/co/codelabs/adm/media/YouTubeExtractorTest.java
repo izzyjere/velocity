@@ -110,4 +110,22 @@ public final class YouTubeExtractorTest {
                 authorization);
         assertFalse(authorization.contains("secret"));
     }
+    @Test public void attachesPerFormatRequestContext() throws Exception {
+        String json = "{\"videoDetails\":{\"title\":\"Browser title\"},"
+                + "\"streamingData\":{\"formats\":[{\"itag\":18,"
+                + "\"url\":\"https://rr1.googlevideo.com/videoplayback?itag=18\","
+                + "\"mimeType\":\"video/mp4\",\"qualityLabel\":\"360p\"}]}}";
+        YouTubeExtractor.BrowserSession session = new YouTubeExtractor.BrowserSession(
+                null, "visitor", json, "Browser UA");
+
+        YouTubeExtractor.Resolution result = new YouTubeExtractor().resolve(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ", session);
+
+        Map<String, String> headers = result.streams().get(0).requestHeaders();
+        assertEquals("Browser UA", headers.get("User-Agent"));
+        assertEquals("https://www.youtube.com", headers.get("Origin"));
+        assertEquals("https://www.youtube.com/watch?v=dQw4w9WgXcQ", headers.get("Referer"));
+        assertEquals("*/*", headers.get("Accept"));
+    }
+
 }

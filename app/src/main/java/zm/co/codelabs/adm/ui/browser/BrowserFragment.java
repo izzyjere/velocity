@@ -1,5 +1,6 @@
 package zm.co.codelabs.adm.ui.browser;
 
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.KeyEvent;

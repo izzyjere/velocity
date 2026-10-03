@@ -144,7 +144,10 @@ public final class DownloadJob implements Runnable {
             ErrorCode code = root.getMessage() != null && root.getMessage().toLowerCase(java.util.Locale.ROOT).contains("checksum")
                     ? ErrorCode.CHECKSUM_MISMATCH : root instanceof HttpStatusException status ? RetryPolicy.classifyHttp(status.statusCode()) : RetryPolicy.classify(root);
             logs.error("Download #" + id + "/" + code.name(), root);
-            fail(code, "Download failed");
+            String message = isExpiredYouTubeStream(record, root)
+                    ? "YouTube stream URL expired. Re-open the video and retry."
+                    : "Download failed";
+            fail(code, message);
             listener.onTerminal(id, DownloadState.FAILED);
         }
     }
@@ -264,4 +267,10 @@ public final class DownloadJob implements Runnable {
         catch (AtomicMoveNotSupportedException e) { Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING); }
     }
     private static String firstHeader(Map<String, List<String>> headers, String name) { for (Map.Entry<String, List<String>> entry : headers.entrySet()) if (entry.getKey().equalsIgnoreCase(name) && !entry.getValue().isEmpty()) return entry.getValue().get(0); return null; }
+    private static boolean isExpiredYouTubeStream(DownloadEntity record, Throwable error) {
+        if (!(error instanceof HttpStatusException status) || status.statusCode() != 403
+                || record == null) return false;
+        String url = record.resolvedUrl != null ? record.resolvedUrl : record.canonicalUrl;
+        return url != null && url.toLowerCase(java.util.Locale.ROOT).contains(".googlevideo.com/");
+    }
 }

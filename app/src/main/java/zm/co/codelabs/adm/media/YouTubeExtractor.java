@@ -27,10 +27,9 @@ import zm.co.codelabs.adm.util.CommonUtils;
 /**
  * Resolves a YouTube watch/share URL into directly downloadable progressive and adaptive streams.
  *
- * <p>The extractor talks to YouTube's public Innertube {@code player} endpoint using the ANDROID_VR
- * client context, which returns stream descriptors that already contain a plain {@code url} field
- * (no signature ciphering or PoToken required). This keeps the download engine unchanged: it simply
- * receives a direct {@code googlevideo.com} URL like any other media resource.</p>
+ * <p>The extractor talks to YouTube's public Innertube {@code player} endpoint using an Android
+ * client context. When available, a video-bound player PO token is included so the response can
+ * expose adaptive stream URLs without moving YouTube-specific behavior into the download engine.</p>
  */
 public final class YouTubeExtractor {
     /**
@@ -40,11 +39,11 @@ public final class YouTubeExtractor {
     private static final String INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
     private static final String PLAYER_ENDPOINT =
             "https://www.youtube.com/youtubei/v1/player?key=" + INNERTUBE_KEY;
-    private static final String CLIENT_NAME = "ANDROID_VR";
-    private static final String CLIENT_VERSION = "1.60.19";
+    private static final String CLIENT_NAME = "ANDROID";
+    private static final String CLIENT_VERSION = "20.10.38";
+    private static final String CLIENT_ID = "3";
     private static final String USER_AGENT =
-            "com.google.android.apps.youtube.vr.oculus/" + CLIENT_VERSION
-                    + " (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
+            "com.google.android.youtube/" + CLIENT_VERSION + " (Linux; U; Android 11) gzip";
     /** User-Agent that must accompany downloads of the resolved ANDROID-client stream URLs. */
     public static final String STREAM_USER_AGENT = USER_AGENT;
     private static final String VISITOR_ID_ENDPOINT =
@@ -112,29 +111,37 @@ public final class YouTubeExtractor {
             formats = formats == null ? List.of() : List.copyOf(formats);
         }
         public List<Stream> directlyDownloadable() {
-            return formats.stream().filter(stream -> stream.progressive() || stream.audioOnly()).toList();
+            List<Stream> result = new ArrayList<>();
+            for (Stream stream : formats) {
+                if (stream.progressive() || stream.audioOnly()) result.add(stream);
+            }
+            return List.copyOf(result);
         }
         public List<Stream> mergeRequired() {
-            return formats.stream().filter(Stream::videoOnly).toList();
+            List<Stream> result = new ArrayList<>();
+            for (Stream stream : formats) if (stream.videoOnly()) result.add(stream);
+            return List.copyOf(result);
         }
         public Stream bestAudioFor(Stream video) {
-            if (video == null || !video.videoOnly()) return null;
-            boolean mp4 = video.mimeType() != null && video.mimeType().toLowerCase(Locale.ROOT).contains("mp4");
-            return formats.stream()
-                    .filter(Stream::audioOnly)
-                    .filter(audio -> audio.mimeType() != null
-                            && (mp4 == audio.mimeType().toLowerCase(Locale.ROOT).contains("mp4")))
-                    .max(java.util.Comparator.comparingLong(Stream::bitrate)
-                            .thenComparingLong(Stream::contentLength))
-                    .orElse(null);
+            if (!isSafelyMuxableVideo(video)) return null;
+            Stream best = null;
+            for (Stream audio : formats) {
+                if (!isSafelyMuxableAudio(audio)) continue;
+                if (best == null || audio.bitrate() > best.bitrate()
+                        || (audio.bitrate() == best.bitrate()
+                        && audio.contentLength() > best.contentLength())) best = audio;
+            }
+            return best;
         }
         public List<Stream> selectableFormats() {
-            return formats.stream()
-                    .filter(stream -> stream.progressive() || stream.audioOnly()
-                            || (stream.videoOnly() && bestAudioFor(stream) != null
-                            && stream.mimeType() != null
-                            && stream.mimeType().toLowerCase(Locale.ROOT).contains("mp4")))
-                    .toList();
+            List<Stream> result = new ArrayList<>();
+            for (Stream stream : formats) {
+                if (stream.progressive() || stream.audioOnly()
+                        || (isSafelyMuxableVideo(stream) && bestAudioFor(stream) != null)) {
+                    result.add(stream);
+                }
+            }
+            return List.copyOf(result);
         }
     }
 
@@ -158,14 +165,24 @@ public final class YouTubeExtractor {
         }
         public boolean progressive() { return hasVideo && hasAudio; }
         public boolean videoOnly() { return hasVideo && !hasAudio; }
+        public String container() { return containerExtension(mimeType); }
         public String label() {
-            String kind = audioOnly ? "Audio" : "Video";
-            String quality = qualityLabel == null || qualityLabel.isBlank() ? "" : " " + qualityLabel;
-            String container = containerExtension(mimeType);
-            String mode = videoOnly() ? " · video only" : progressive() ? " · video + audio" : "";
-            String frameRate = fps > 0 ? " · " + fps + "fps" : "";
+            String container = containerExtension(mimeType).toUpperCase(Locale.ROOT);
+            String quality = qualityLabel == null ? "" : qualityLabel.trim();
+            if (audioOnly) {
+                String rate = bitrate > 0 ? " · " + Math.round(bitrate / 1000d) + " kbps" : "";
+                return "Audio " + container + rate + sizeSuffix();
+            }
+            if (quality.isBlank()) quality = height > 0 ? height + "p" : "Video";
+            if (fps > 30 && !quality.toLowerCase(Locale.ROOT).contains("p" + fps)) quality += fps;
+            String mode = videoOnly() ? " · video only · audio will be merged"
+                    : progressive() ? " · video + audio" : "";
+            return quality + " " + container + mode + sizeSuffix();
+        }
+
+        private String sizeSuffix() {
             String size = contentLength > 0 ? " · " + CommonUtils.humanSize(contentLength) : "";
-            return kind + quality + " (" + container + ")" + mode + frameRate + size;
+            return size;
         }
 
         public String suggestedFileName(String title) {
@@ -255,10 +272,11 @@ public final class YouTubeExtractor {
 
         String visitor = browser.visitorData() == null
                 ? ensureVisitorData(false, browser.cookies()) : browser.visitorData();
-        String json = requestPlayer(videoId, visitor, browser);
+        String json = requestPlayer(videoId, visitor, browser, poToken);
         List<Stream> streams = parsePlayerResponse(json);
         if (streams.isEmpty() && isBotCheck(json)) {
-            json = requestPlayer(videoId, ensureVisitorData(true, browser.cookies()), browser);
+            json = requestPlayer(videoId, ensureVisitorData(true, browser.cookies()), browser,
+                    poToken);
             streams = parsePlayerResponse(json);
         }
         if (streams.isEmpty()) throw new IOException(playabilityMessage(json));
@@ -349,12 +367,13 @@ public final class YouTubeExtractor {
         return List.copyOf(contextualized);
     }
 
-    private String requestPlayer(String videoId, String visitor, BrowserSession session) throws IOException {
-        JSONObject body = requestBody(videoId, visitor);
+    private String requestPlayer(String videoId, String visitor, BrowserSession session,
+                                 String playerPoToken) throws IOException {
+        JSONObject body = requestBody(videoId, visitor, playerPoToken);
         Request.Builder request = new Request.Builder()
                 .url(PLAYER_ENDPOINT)
                 .header("User-Agent", USER_AGENT)
-                .header("X-YouTube-Client-Name", "28")
+                .header("X-YouTube-Client-Name", CLIENT_ID)
                 .header("X-YouTube-Client-Version", CLIENT_VERSION)
                 .header("Origin", "https://www.youtube.com")
                 .header("Referer", "https://www.youtube.com/");
@@ -465,22 +484,29 @@ public final class YouTubeExtractor {
         return new JSONObject()
                 .put("clientName", CLIENT_NAME)
                 .put("clientVersion", CLIENT_VERSION)
-                .put("deviceModel", "Quest 3")
-                .put("androidSdkVersion", 32)
+                .put("androidSdkVersion", 30)
+                .put("userAgent", USER_AGENT)
+                .put("osName", "Android")
+                .put("osVersion", "11")
                 .put("hl", "en")
                 .put("gl", "US");
     }
 
-    private static JSONObject requestBody(String videoId, String visitor) {
+    private static JSONObject requestBody(String videoId, String visitor, String playerPoToken) {
         try {
             JSONObject clientContext = clientContext();
             if (visitor != null && !visitor.isBlank()) clientContext.put("visitorData", visitor);
             JSONObject context = new JSONObject().put("client", clientContext);
-            return new JSONObject()
+            JSONObject body = new JSONObject()
                     .put("context", context)
                     .put("videoId", videoId)
                     .put("contentCheckOk", true)
                     .put("racyCheckOk", true);
+            if (playerPoToken != null && !playerPoToken.isBlank()) {
+                body.put("serviceIntegrityDimensions",
+                        new JSONObject().put("poToken", playerPoToken));
+            }
+            return body;
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
@@ -525,6 +551,30 @@ public final class YouTubeExtractor {
                 stream.audioOnly(), stream.contentLength(), stream.requestHeaders(),
                 stream.width(), stream.height(), stream.fps(), stream.bitrate(),
                 stream.hasVideo(), stream.hasAudio());
+    }
+
+    private static boolean isSafelyMuxableVideo(Stream stream) {
+        if (stream == null || !stream.videoOnly() || !isMime(stream.mimeType(), "video/mp4")) {
+            return false;
+        }
+        String mime = stream.mimeType().toLowerCase(Locale.ROOT);
+        return mime.contains("avc1") || mime.contains("avc3") || mime.contains("h264")
+                || mime.contains("hvc1") || mime.contains("hev1") || mime.contains("mp4v");
+    }
+
+    private static boolean isSafelyMuxableAudio(Stream stream) {
+        if (stream == null || !stream.audioOnly() || !isMime(stream.mimeType(), "audio/mp4")) {
+            return false;
+        }
+        String mime = stream.mimeType().toLowerCase(Locale.ROOT);
+        return mime.contains("mp4a");
+    }
+
+    private static boolean isMime(String value, String expected) {
+        if (value == null) return false;
+        int separator = value.indexOf(';');
+        String base = separator < 0 ? value : value.substring(0, separator);
+        return base.trim().equalsIgnoreCase(expected);
     }
 
     private static String playabilityMessage(String json) {

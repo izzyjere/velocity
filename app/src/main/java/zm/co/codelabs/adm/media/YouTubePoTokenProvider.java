@@ -19,6 +19,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -30,6 +31,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import okhttp3.MediaType;
+import okhttp3.Cookie;
+import okhttp3.CookieJar;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -48,7 +52,8 @@ public final class YouTubePoTokenProvider implements AutoCloseable {
     private static final String IFRAME_API_URL = "https://www.youtube.com/iframe_api";
     private static final Pattern PLAYER_ID = Pattern.compile("player\\\\/([A-Za-z0-9_-]+)\\\\/");
     private static final String ATTESTATION_USER_AGENT =
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36(KHTML, like Gecko)";
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                    + "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
     private static final String PLAYER_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     + "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
@@ -59,7 +64,30 @@ public final class YouTubePoTokenProvider implements AutoCloseable {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor(r ->
             new Thread(r, "youtube-pot"));
+    private final List<Cookie> sessionCookies = Collections.synchronizedList(new ArrayList<>());
     private final OkHttpClient client = new OkHttpClient.Builder()
+            .cookieJar(new CookieJar() {
+                @Override public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
+                    synchronized (sessionCookies) {
+                        for (Cookie cookie : cookies) {
+                            sessionCookies.removeIf(existing -> existing.name().equals(cookie.name())
+                                    && existing.domain().equals(cookie.domain())
+                                    && existing.path().equals(cookie.path()));
+                            sessionCookies.add(cookie);
+                        }
+                    }
+                }
+
+                @Override public List<Cookie> loadForRequest(HttpUrl url) {
+                    long now = System.currentTimeMillis();
+                    synchronized (sessionCookies) {
+                        sessionCookies.removeIf(cookie -> cookie.expiresAt() <= now);
+                        List<Cookie> matches = new ArrayList<>();
+                        for (Cookie cookie : sessionCookies) if (cookie.matches(url)) matches.add(cookie);
+                        return matches;
+                    }
+                }
+            })
             .connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build();
     private final Map<String, CompletableFuture<String>> pendingTokens = new ConcurrentHashMap<>();
     private final Map<String, String> nTransformCache = new ConcurrentHashMap<>();

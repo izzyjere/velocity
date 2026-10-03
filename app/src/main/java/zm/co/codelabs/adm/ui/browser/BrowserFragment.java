@@ -114,7 +114,7 @@ public final class BrowserFragment extends Fragment {
         String initial = pendingUrl != null ? pendingUrl : getArguments() == null ? null : getArguments().getString(ARG_URL); pendingUrl = null; if (initial != null) { binding.address.setText(initial); updateMediaButton(initial); binding.web.loadUrl(initial); }
     }
     private void navigate() { String value = binding.address.getText() == null ? "" : binding.address.getText().toString().trim(); if (!value.matches("(?i)^https?://.*")) value = "https://" + value; Uri uri = Uri.parse(value); if (uri.getHost() == null || !("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))) { binding.addressLayout.setError("Enter a valid web address"); return; } binding.addressLayout.setError(null); binding.web.loadUrl(uri.toString()); }
-    private void intercept(String url, String userAgent, Map<String, String> requestHeaders) { Map<String, String> headers = new LinkedHashMap<>(requestHeaders); String cookies = CookieManager.getInstance().getCookie(url); if (cookies != null && !cookies.isBlank()) headers.put("Cookie", cookies); if (userAgent != null) headers.put("User-Agent", userAgent); String referrer = binding.web.getUrl(); if (referrer != null) headers.put("Referer", referrer); ((MainActivity) requireActivity()).showAddDownload(url, headers); }
+    private void intercept(String url, String userAgent, Map<String, String> requestHeaders) { Map<String, String> headers = new LinkedHashMap<>(requestHeaders); mergeCookies(headers, CookieManager.getInstance().getCookie(url)); if (userAgent != null) headers.put("User-Agent", userAgent); String referrer = binding.web.getUrl(); if (referrer != null) headers.put("Referer", referrer); ((MainActivity) requireActivity()).showAddDownload(url, headers); }
     private void collectCandidate(String url, Map<String, String> requestHeaders) {
         if (!MediaDiscovery.isDirectMediaUrl(url)) return;
         if (mediaCandidates.size() >= MAX_MEDIA_CANDIDATES || mediaCandidates.containsKey(url)) return;
@@ -186,16 +186,23 @@ public final class BrowserFragment extends Fragment {
             try {
                 YouTubeExtractor.BrowserSession resolvedSession = session;
                 String poToken = null;
-                Map<String, String> transformedNs = Map.of();
-                if (YouTubeExtractor.requiresWebPoToken(resolvedSession)) {
+                Map<String, String> transformedNs = new LinkedHashMap<>();
+                boolean webPoTokenRequired = YouTubeExtractor.requiresWebPoToken(resolvedSession);
+                boolean playerFallbackRequired = YouTubeExtractor.parsePlayerResponse(
+                        resolvedSession.playerResponse()).isEmpty();
+                if (webPoTokenRequired || playerFallbackRequired) {
                     String videoId = YouTubeExtractor.videoId(pageUrl);
                     if (videoId == null) throw new java.io.IOException("Not a recognizable YouTube link");
-                    poToken = poTokenProvider.tokenFor(videoId);
-                    transformedNs = new LinkedHashMap<>();
-                    for (String rawN : YouTubeExtractor.rawNValues(resolvedSession)) {
-                        transformedNs.put(rawN, poTokenProvider.transformN(rawN,
-                                resolvedSession.playerJsUrl()));
+                    try {
+                        poToken = poTokenProvider.tokenFor(videoId);
+                    } catch (java.io.IOException tokenFailure) {
+                        if (webPoTokenRequired) throw tokenFailure;
+                        // The Android player can still expose a progressive fallback without POT.
                     }
+                }
+                for (String rawN : YouTubeExtractor.rawNValues(resolvedSession)) {
+                    transformedNs.put(rawN, poTokenProvider.transformN(rawN,
+                            resolvedSession.playerJsUrl()));
                 }
                 videoInfo = youTubeExtractor.extract(pageUrl, resolvedSession, poToken,
                         transformedNs);
@@ -230,7 +237,7 @@ public final class BrowserFragment extends Fragment {
         if (streams.isEmpty()) {
             new MaterialAlertDialogBuilder(requireContext())
                     .setTitle(R.string.no_direct_media_title)
-                    .setMessage("Only separate video/audio streams are available for this quality. Merging support is not enabled yet.")
+                    .setMessage("No directly downloadable or safely mergeable formats are available.")
                     .setPositiveButton(android.R.string.ok, null).show();
             return;
         }
@@ -271,8 +278,8 @@ public final class BrowserFragment extends Fragment {
         Map<String, String> audioHeaders = new LinkedHashMap<>(audio.requestHeaders());
         String videoCookies = CookieManager.getInstance().getCookie(video.url());
         String audioCookies = CookieManager.getInstance().getCookie(audio.url());
-        if (videoCookies != null && !videoCookies.isBlank()) videoHeaders.put("Cookie", videoCookies);
-        if (audioCookies != null && !audioCookies.isBlank()) audioHeaders.put("Cookie", audioCookies);
+        mergeCookies(videoHeaders, videoCookies);
+        mergeCookies(audioHeaders, audioCookies);
         Intent intent = new Intent(requireContext(), YouTubeAdaptiveDownloadService.class)
                 .setAction(YouTubeAdaptiveDownloadService.ACTION_START)
                 .putExtra(YouTubeAdaptiveDownloadService.EXTRA_VIDEO_URL, video.url())
@@ -290,8 +297,14 @@ public final class BrowserFragment extends Fragment {
     private void downloadStream(YouTubeExtractor.Stream stream, String title) {
         Map<String, String> headers = new LinkedHashMap<>(stream.requestHeaders());
         String cookies = CookieManager.getInstance().getCookie(stream.url());
-        if (cookies != null && !cookies.isBlank()) headers.put("Cookie", cookies);
+        mergeCookies(headers, cookies);
         ((MainActivity) requireActivity()).showAddDownload(stream.url(), headers, stream.suggestedFileName(title));
+    }
+    private static void mergeCookies(Map<String, String> headers, String cookies) {
+        if (cookies == null || cookies.isBlank()) return;
+        String captured = headers.get("Cookie");
+        if (captured == null || captured.isBlank()) headers.put("Cookie", cookies);
+        else if (!captured.equals(cookies)) headers.put("Cookie", captured + "; " + cookies);
     }
     private void setAddressBarVisible(boolean visible) {
         if (binding == null || addressBarVisible == visible) return;

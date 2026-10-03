@@ -30,6 +30,7 @@ import zm.co.codelabs.adm.engine.model.ProbeResult;
 import zm.co.codelabs.adm.engine.model.TransferRequest;
 import zm.co.codelabs.adm.storage.PositionedFileWriter;
 import zm.co.codelabs.adm.transport.TransportCall;
+import zm.co.codelabs.adm.transport.HttpStatusException;
 import zm.co.codelabs.adm.transport.okhttp.OkHttpTransport;
 import zm.co.codelabs.adm.R;
 import zm.co.codelabs.adm.platform.notification.DownloadNotifications;
@@ -75,21 +76,26 @@ public final class YouTubeAdaptiveDownloadService extends Service {
         File video = new File(dir, "video-" + System.nanoTime() + ".mp4");
         File audio = new File(dir, "audio-" + System.nanoTime() + ".m4a");
         File merged = new File(dir, "merged-" + System.nanoTime() + ".mp4");
+        Future<?> videoTransfer = null;
+        Future<?> audioTransfer = null;
         try {
             if (!dir.exists() && !dir.mkdirs()) throw new IOException("Cannot create YouTube temporary directory");
             update("Downloading video and audio", true);
-            Future<?> v = transfers.submit(() -> download(videoUrl, videoHeaders, video));
-            Future<?> a = transfers.submit(() -> download(audioUrl, audioHeaders, audio));
-            v.get(); a.get();
+            videoTransfer = transfers.submit(() -> download(videoUrl, videoHeaders, video));
+            audioTransfer = transfers.submit(() -> download(audioUrl, audioHeaders, audio));
+            videoTransfer.get();
+            audioTransfer.get();
             update("Merging tracks", true);
             muxMp4(video, audio, merged);
             Uri published = new DownloadPublisher(this).publish(merged, ensureMp4(fileName), "video/mp4");
             update("Saved to " + published, false);
         } catch (Exception e) {
-            update("YouTube download failed: " + rootMessage(e), false);
+            if (videoTransfer != null) videoTransfer.cancel(true);
+            if (audioTransfer != null) audioTransfer.cancel(true);
+            update("YouTube download failed: " + failureMessage(e), false);
         } finally {
             video.delete(); audio.delete(); merged.delete();
-            stopForeground(false);
+            stopForeground(STOP_FOREGROUND_DETACH);
             stopSelf(startId);
         }
     }
@@ -99,10 +105,13 @@ public final class YouTubeAdaptiveDownloadService extends Service {
             ProbeResult probe = transport.probe(new DownloadRequest(url, headers));
             List<ByteRange> ranges = new DownloadPlanner().plan(probe, 8);
             if (!ranges.isEmpty() && probe.safeForMultipart()) {
+                String validator = probe.etag() != null && !probe.etag().startsWith("W/")
+                        ? probe.etag() : probe.lastModified();
                 try (PositionedFileWriter writer = new PositionedFileWriter(target, probe.contentLength())) {
                     List<Future<?>> workers = new ArrayList<>();
                     for (ByteRange range : ranges) {
-                        workers.add(segments.submit(() -> copyRange(transport, probe.resolvedUrl(), headers, range, writer)));
+                        workers.add(segments.submit(() -> copyRange(transport, probe.resolvedUrl(),
+                                headers, range, validator, writer)));
                     }
                     for (Future<?> worker : workers) worker.get();
                     writer.force(false);
@@ -124,8 +133,8 @@ public final class YouTubeAdaptiveDownloadService extends Service {
     }
 
     private static void copyRange(OkHttpTransport transport, String url, Map<String, String> headers,
-                                  ByteRange range, PositionedFileWriter writer) {
-        try (TransportCall call = transport.open(new TransferRequest(url, headers, range, null))) {
+                                  ByteRange range, String validator, PositionedFileWriter writer) {
+        try (TransportCall call = transport.open(new TransferRequest(url, headers, range, validator))) {
             byte[] buffer = new byte[128 * 1024];
             InputStream in = call.body();
             long position = range.start();
@@ -179,7 +188,8 @@ public final class YouTubeAdaptiveDownloadService extends Service {
         return -1;
     }
 
-    private static void copyTrack(MediaExtractor extractor, MediaMuxer muxer, int muxTrack) {
+    private static void copyTrack(MediaExtractor extractor, MediaMuxer muxer, int muxTrack)
+            throws IOException {
         ByteBuffer buffer = ByteBuffer.allocateDirect(2 * 1024 * 1024);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         while (true) {
@@ -189,7 +199,17 @@ public final class YouTubeAdaptiveDownloadService extends Service {
             info.offset = 0;
             info.size = size;
             info.presentationTimeUs = extractor.getSampleTime();
-            info.flags = extractor.getSampleFlags();
+            int sampleFlags = extractor.getSampleFlags();
+            if ((sampleFlags & MediaExtractor.SAMPLE_FLAG_ENCRYPTED) != 0) {
+                throw new IOException("Encrypted YouTube tracks cannot be merged");
+            }
+            info.flags = 0;
+            if ((sampleFlags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                info.flags |= MediaCodec.BUFFER_FLAG_KEY_FRAME;
+            }
+            if ((sampleFlags & MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME) != 0) {
+                info.flags |= MediaCodec.BUFFER_FLAG_PARTIAL_FRAME;
+            }
             muxer.writeSampleData(muxTrack, buffer, info);
             extractor.advance();
         }
@@ -232,9 +252,12 @@ public final class YouTubeAdaptiveDownloadService extends Service {
         return safe + ".mp4";
     }
 
-    private static String rootMessage(Throwable error) {
+    public static String failureMessage(Throwable error) {
         Throwable current = error;
         while (current.getCause() != null) current = current.getCause();
+        if (current instanceof HttpStatusException status && status.statusCode() == 403) {
+            return "YouTube stream URL expired. Re-open the video and retry.";
+        }
         String message = current.getMessage();
         return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
     }

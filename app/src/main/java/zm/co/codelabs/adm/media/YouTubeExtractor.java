@@ -106,9 +106,16 @@ public final class YouTubeExtractor {
         }
     }
 
-    /** A single downloadable YouTube stream. */
+    /** A single downloadable YouTube stream plus the HTTP context required to replay it. */
     public record Stream(String url, int itag, String mimeType, String qualityLabel,
-                         boolean audioOnly, long contentLength) {
+                         boolean audioOnly, long contentLength, Map<String, String> requestHeaders) {
+        public Stream(String url, int itag, String mimeType, String qualityLabel,
+                      boolean audioOnly, long contentLength) {
+            this(url, itag, mimeType, qualityLabel, audioOnly, contentLength, Map.of());
+        }
+        public Stream {
+            requestHeaders = requestHeaders == null ? Map.of() : Map.copyOf(requestHeaders);
+        }
         public String label() {
             String kind = audioOnly ? "Audio" : "Video";
             String quality = qualityLabel == null || qualityLabel.isBlank() ? "" : " " + qualityLabel;
@@ -191,6 +198,7 @@ public final class YouTubeExtractor {
         }
         if (!pageStreams.isEmpty()) {
             String agent = browser.userAgent() == null ? STREAM_USER_AGENT : browser.userAgent();
+            pageStreams = withRequestContext(pageStreams, agent, pageUrl);
             return new Resolution(parseTitle(browser.playerResponse()), pageStreams, agent);
         }
 
@@ -203,6 +211,7 @@ public final class YouTubeExtractor {
             streams = parsePlayerResponse(json);
         }
         if (streams.isEmpty()) throw new IOException(playabilityMessage(json));
+        streams = withRequestContext(streams, STREAM_USER_AGENT, pageUrl);
         return new Resolution(parseTitle(json), streams, STREAM_USER_AGENT);
     }
 
@@ -245,7 +254,8 @@ public final class YouTubeExtractor {
                     && url.queryParameter("pot") == null) {
                 url = url.newBuilder().addQueryParameter("pot", poToken).build();
                 protectedStreams.add(new Stream(url.toString(), stream.itag(), stream.mimeType(),
-                        stream.qualityLabel(), stream.audioOnly(), stream.contentLength()));
+                        stream.qualityLabel(), stream.audioOnly(), stream.contentLength(),
+                        stream.requestHeaders()));
             } else {
                 protectedStreams.add(stream);
             }
@@ -263,12 +273,31 @@ public final class YouTubeExtractor {
             if (transformedN != null && !transformedN.isBlank()) {
                 url = url.newBuilder().setQueryParameter("n", transformedN).build();
                 transformed.add(new Stream(url.toString(), stream.itag(), stream.mimeType(),
-                        stream.qualityLabel(), stream.audioOnly(), stream.contentLength()));
+                        stream.qualityLabel(), stream.audioOnly(), stream.contentLength(),
+                        stream.requestHeaders()));
             } else {
                 transformed.add(stream);
             }
         }
         return List.copyOf(transformed);
+    }
+
+    private static List<Stream> withRequestContext(List<Stream> streams, String userAgent,
+                                                   String pageUrl) {
+        Map<String, String> base = new java.util.LinkedHashMap<>();
+        base.put("User-Agent", userAgent == null || userAgent.isBlank() ? STREAM_USER_AGENT : userAgent);
+        base.put("Accept", "*/*");
+        base.put("Accept-Language", "en-US,en;q=0.9");
+        base.put("Origin", "https://www.youtube.com");
+        if (pageUrl != null && !pageUrl.isBlank()) base.put("Referer", pageUrl);
+        List<Stream> contextualized = new ArrayList<>(streams.size());
+        for (Stream stream : streams) {
+            Map<String, String> headers = new java.util.LinkedHashMap<>(base);
+            headers.putAll(stream.requestHeaders());
+            contextualized.add(new Stream(stream.url(), stream.itag(), stream.mimeType(),
+                    stream.qualityLabel(), stream.audioOnly(), stream.contentLength(), headers));
+        }
+        return List.copyOf(contextualized);
     }
 
     private String requestPlayer(String videoId, String visitor, BrowserSession session) throws IOException {

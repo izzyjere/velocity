@@ -106,22 +106,34 @@ public final class YouTubeExtractor {
         }
     }
 
-    /** A single downloadable YouTube stream plus the HTTP context required to replay it. */
+    /** A single downloadable YouTube format plus the HTTP context required to replay it. */
     public record Stream(String url, int itag, String mimeType, String qualityLabel,
-                         boolean audioOnly, long contentLength, Map<String, String> requestHeaders) {
+                         boolean audioOnly, long contentLength, Map<String, String> requestHeaders,
+                         int width, int height, int fps, long bitrate,
+                         boolean hasVideo, boolean hasAudio) {
         public Stream(String url, int itag, String mimeType, String qualityLabel,
                       boolean audioOnly, long contentLength) {
-            this(url, itag, mimeType, qualityLabel, audioOnly, contentLength, Map.of());
+            this(url, itag, mimeType, qualityLabel, audioOnly, contentLength, Map.of(),
+                    0, 0, 0, 0, !audioOnly, audioOnly);
+        }
+        public Stream(String url, int itag, String mimeType, String qualityLabel,
+                      boolean audioOnly, long contentLength, Map<String, String> requestHeaders) {
+            this(url, itag, mimeType, qualityLabel, audioOnly, contentLength, requestHeaders,
+                    0, 0, 0, 0, !audioOnly, audioOnly);
         }
         public Stream {
             requestHeaders = requestHeaders == null ? Map.of() : Map.copyOf(requestHeaders);
         }
+        public boolean progressive() { return hasVideo && hasAudio; }
+        public boolean videoOnly() { return hasVideo && !hasAudio; }
         public String label() {
             String kind = audioOnly ? "Audio" : "Video";
             String quality = qualityLabel == null || qualityLabel.isBlank() ? "" : " " + qualityLabel;
             String container = containerExtension(mimeType);
+            String mode = videoOnly() ? " · video only" : progressive() ? " · video + audio" : "";
+            String frameRate = fps > 0 ? " · " + fps + "fps" : "";
             String size = contentLength > 0 ? " · " + CommonUtils.humanSize(contentLength) : "";
-            return kind + quality + " (" + container + ")" + size;
+            return kind + quality + " (" + container + ")" + mode + frameRate + size;
         }
 
         public String suggestedFileName(String title) {
@@ -253,9 +265,7 @@ public final class YouTubeExtractor {
             if (url != null && url.host().endsWith(".googlevideo.com")
                     && url.queryParameter("pot") == null) {
                 url = url.newBuilder().addQueryParameter("pot", poToken).build();
-                protectedStreams.add(new Stream(url.toString(), stream.itag(), stream.mimeType(),
-                        stream.qualityLabel(), stream.audioOnly(), stream.contentLength(),
-                        stream.requestHeaders()));
+                protectedStreams.add(copyWithUrl(stream, url.toString()));
             } else {
                 protectedStreams.add(stream);
             }
@@ -272,9 +282,7 @@ public final class YouTubeExtractor {
             String transformedN = rawN == null ? null : transformedNs.get(rawN);
             if (transformedN != null && !transformedN.isBlank()) {
                 url = url.newBuilder().setQueryParameter("n", transformedN).build();
-                transformed.add(new Stream(url.toString(), stream.itag(), stream.mimeType(),
-                        stream.qualityLabel(), stream.audioOnly(), stream.contentLength(),
-                        stream.requestHeaders()));
+                transformed.add(copyWithUrl(stream, url.toString()));
             } else {
                 transformed.add(stream);
             }
@@ -295,7 +303,9 @@ public final class YouTubeExtractor {
             Map<String, String> headers = new java.util.LinkedHashMap<>(base);
             headers.putAll(stream.requestHeaders());
             contextualized.add(new Stream(stream.url(), stream.itag(), stream.mimeType(),
-                    stream.qualityLabel(), stream.audioOnly(), stream.contentLength(), headers));
+                    stream.qualityLabel(), stream.audioOnly(), stream.contentLength(), headers,
+                    stream.width(), stream.height(), stream.fps(), stream.bitrate(),
+                    stream.hasVideo(), stream.hasAudio()));
         }
         return List.copyOf(contextualized);
     }
@@ -444,14 +454,14 @@ public final class YouTubeExtractor {
             JSONObject root = new JSONObject(json);
             JSONObject streamingData = root.optJSONObject("streamingData");
             if (streamingData == null) return streams;
-            collect(streams, streamingData.optJSONArray("formats"));
-            collect(streams, streamingData.optJSONArray("adaptiveFormats"));
+            collect(streams, streamingData.optJSONArray("formats"), false);
+            collect(streams, streamingData.optJSONArray("adaptiveFormats"), true);
         } catch (Exception ignored) {
         }
         return streams;
     }
 
-    private static void collect(List<Stream> streams, JSONArray formats) {
+    private static void collect(List<Stream> streams, JSONArray formats, boolean adaptive) {
         if (formats == null) return;
         for (int i = 0; i < formats.length(); i++) {
             JSONObject format = formats.optJSONObject(i);
@@ -460,11 +470,22 @@ public final class YouTubeExtractor {
             if (url == null || url.isBlank()) continue; // ciphered formats are skipped
             String mime = format.optString("mimeType", "");
             boolean audioOnly = mime.startsWith("audio/");
+            boolean hasVideo = !audioOnly && mime.startsWith("video/");
+            boolean hasAudio = audioOnly || (!adaptive && hasVideo);
             String quality = format.optString("qualityLabel",
                     audioOnly ? format.optString("audioQuality", "") : format.optString("quality", ""));
             long length = parseLong(format.optString("contentLength", ""));
-            streams.add(new Stream(url, format.optInt("itag", 0), mime, quality, audioOnly, length));
+            streams.add(new Stream(url, format.optInt("itag", 0), mime, quality, audioOnly, length,
+                    Map.of(), format.optInt("width", 0), format.optInt("height", 0),
+                    format.optInt("fps", 0), format.optLong("bitrate", 0), hasVideo, hasAudio));
         }
+    }
+
+    private static Stream copyWithUrl(Stream stream, String url) {
+        return new Stream(url, stream.itag(), stream.mimeType(), stream.qualityLabel(),
+                stream.audioOnly(), stream.contentLength(), stream.requestHeaders(),
+                stream.width(), stream.height(), stream.fps(), stream.bitrate(),
+                stream.hasVideo(), stream.hasAudio());
     }
 
     private static String playabilityMessage(String json) {

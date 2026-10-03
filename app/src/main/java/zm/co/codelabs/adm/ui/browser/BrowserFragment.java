@@ -224,7 +224,7 @@ public final class BrowserFragment extends Fragment {
     }
     private void showYouTubeStreams(YouTubeExtractor.Resolution resolution) {
         List<YouTubeExtractor.Stream> streams = resolution.streams();
-        if (streams.size() == 1) { downloadStream(streams.get(0), resolution.title(), youtubeStreamHeaders(streams.get(0), resolution.streamUserAgent())); return; }
+        if (streams.size() == 1) { downloadStream(streams.get(0), resolution.title()); return; }
         BottomSheetMediaChooserBinding chooser = BottomSheetMediaChooserBinding.inflate(getLayoutInflater());
         chooser.mediaSummary.setText(getResources().getQuantityString(R.plurals.media_files_found, streams.size(), streams.size()));
         int margin = Math.round(6 * getResources().getDisplayMetrics().density);
@@ -236,22 +236,13 @@ public final class BrowserFragment extends Fragment {
         }
         ViewGroup.LayoutParams scrollParams = chooser.mediaListScroll.getLayoutParams(); scrollParams.height = Math.round(Math.min(320, streams.size() * 64) * getResources().getDisplayMetrics().density); chooser.mediaListScroll.setLayoutParams(scrollParams);
         BottomSheetDialog dialog = new BottomSheetDialog(requireContext()); dialog.setContentView(chooser.getRoot());
-        for (int i = 0; i < streams.size(); i++) { YouTubeExtractor.Stream stream = streams.get(i); chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); downloadStream(stream, resolution.title(), youtubeStreamHeaders(stream, resolution.streamUserAgent())); }); }
+        for (int i = 0; i < streams.size(); i++) { YouTubeExtractor.Stream stream = streams.get(i); chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); downloadStream(stream, resolution.title()); }); }
         dialog.show();
     }
-    private Map<String, String> youtubeStreamHeaders(YouTubeExtractor.Stream stream, String userAgent) {
-        Map<String, String> headers = new LinkedHashMap<>();
-        headers.put("User-Agent", userAgent == null || userAgent.isBlank() ? binding.web.getSettings().getUserAgentString() : userAgent);
-        headers.put("Accept", "*/*");
-        headers.put("Accept-Language", "en-US,en;q=0.9");
-        headers.put("Origin", "https://www.youtube.com");
-        String referrer = binding.web.getUrl();
-        if (referrer != null && !referrer.isBlank()) headers.put("Referer", referrer);
+    private void downloadStream(YouTubeExtractor.Stream stream, String title) {
+        Map<String, String> headers = new LinkedHashMap<>(stream.requestHeaders());
         String cookies = CookieManager.getInstance().getCookie(stream.url());
         if (cookies != null && !cookies.isBlank()) headers.put("Cookie", cookies);
-        return headers;
-    }
-    private void downloadStream(YouTubeExtractor.Stream stream, String title, Map<String, String> headers) {
         ((MainActivity) requireActivity()).showAddDownload(stream.url(), headers, stream.suggestedFileName(title));
     }
     private void setAddressBarVisible(boolean visible) {

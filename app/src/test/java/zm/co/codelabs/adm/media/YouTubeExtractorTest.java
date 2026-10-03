@@ -148,4 +148,21 @@ public final class YouTubeExtractorTest {
         assertTrue(stream.label().contains("video only"));
     }
 
+    @Test public void pairsAdaptiveMp4VideoWithBestMp4Audio() {
+        String json = "{\"streamingData\":{\"adaptiveFormats\":["
+                + "{\"itag\":137,\"url\":\"https://rr1.googlevideo.com/videoplayback?itag=137\","
+                + "\"mimeType\":\"video/mp4\",\"qualityLabel\":\"1080p\",\"bitrate\":4000000},"
+                + "{\"itag\":139,\"url\":\"https://rr1.googlevideo.com/videoplayback?itag=139\","
+                + "\"mimeType\":\"audio/mp4\",\"bitrate\":48000},"
+                + "{\"itag\":140,\"url\":\"https://rr1.googlevideo.com/videoplayback?itag=140\","
+                + "\"mimeType\":\"audio/mp4\",\"bitrate\":128000},"
+                + "{\"itag\":251,\"url\":\"https://rr1.googlevideo.com/videoplayback?itag=251\","
+                + "\"mimeType\":\"audio/webm\",\"bitrate\":160000}]}}";
+        List<YouTubeExtractor.Stream> formats = YouTubeExtractor.parsePlayerResponse(json);
+        YouTubeExtractor.Stream video = formats.get(0);
+        YouTubeExtractor.VideoInfo info = new YouTubeExtractor.VideoInfo("dQw4w9WgXcQ", "Title", formats);
+        assertEquals(140, info.bestAudioFor(video).itag());
+        assertTrue(info.selectableFormats().contains(video));
+    }
+
 }

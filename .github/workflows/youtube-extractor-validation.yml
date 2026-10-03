@@ -1,5 +1,5 @@
 name: YouTube Extractor Validation
-# validates adaptive mux path
+# validates adaptive mux path (final)
 
 on:
   push:

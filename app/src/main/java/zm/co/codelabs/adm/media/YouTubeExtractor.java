@@ -117,6 +117,25 @@ public final class YouTubeExtractor {
         public List<Stream> mergeRequired() {
             return formats.stream().filter(Stream::videoOnly).toList();
         }
+        public Stream bestAudioFor(Stream video) {
+            if (video == null || !video.videoOnly()) return null;
+            boolean mp4 = video.mimeType() != null && video.mimeType().toLowerCase(Locale.ROOT).contains("mp4");
+            return formats.stream()
+                    .filter(Stream::audioOnly)
+                    .filter(audio -> audio.mimeType() != null
+                            && (mp4 == audio.mimeType().toLowerCase(Locale.ROOT).contains("mp4")))
+                    .max(java.util.Comparator.comparingLong(Stream::bitrate)
+                            .thenComparingLong(Stream::contentLength))
+                    .orElse(null);
+        }
+        public List<Stream> selectableFormats() {
+            return formats.stream()
+                    .filter(stream -> stream.progressive() || stream.audioOnly()
+                            || (stream.videoOnly() && bestAudioFor(stream) != null
+                            && stream.mimeType() != null
+                            && stream.mimeType().toLowerCase(Locale.ROOT).contains("mp4")))
+                    .toList();
+        }
     }
 
     /** A single downloadable YouTube format plus the HTTP context required to replay it. */

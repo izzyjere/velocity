@@ -179,7 +179,7 @@ public final class BrowserFragment extends Fragment {
     }
     private void resolveYouTubeInBackground(String pageUrl, YouTubeExtractor.BrowserSession session) {
         extractionExecutor.execute(() -> {
-            YouTubeExtractor.Resolution resolution = null; String error = null;
+            YouTubeExtractor.VideoInfo videoInfo = null; String error = null;
             try {
                 YouTubeExtractor.BrowserSession resolvedSession = session;
                 String poToken = null;
@@ -194,10 +194,10 @@ public final class BrowserFragment extends Fragment {
                                 resolvedSession.playerJsUrl()));
                     }
                 }
-                resolution = youTubeExtractor.resolve(pageUrl, resolvedSession, poToken,
+                videoInfo = youTubeExtractor.extract(pageUrl, resolvedSession, poToken,
                         transformedNs);
             } catch (Exception e) { error = e.getMessage(); }
-            final YouTubeExtractor.Resolution result = resolution; final String failure = error;
+            final YouTubeExtractor.VideoInfo result = videoInfo; final String failure = error;
             if (binding == null) return;
             binding.getRoot().post(() -> {
                 extracting = false;
@@ -222,9 +222,16 @@ public final class BrowserFragment extends Fragment {
             return new YouTubeExtractor.BrowserSession(cookies, null, null, userAgent);
         }
     }
-    private void showYouTubeStreams(YouTubeExtractor.Resolution resolution) {
-        List<YouTubeExtractor.Stream> streams = resolution.streams();
-        if (streams.size() == 1) { downloadStream(streams.get(0), resolution.title()); return; }
+    private void showYouTubeStreams(YouTubeExtractor.VideoInfo video) {
+        List<YouTubeExtractor.Stream> streams = video.directlyDownloadable();
+        if (streams.isEmpty()) {
+            new MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.no_direct_media_title)
+                    .setMessage("Only separate video/audio streams are available for this quality. Merging support is not enabled yet.")
+                    .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+        if (streams.size() == 1) { downloadStream(streams.get(0), video.title()); return; }
         BottomSheetMediaChooserBinding chooser = BottomSheetMediaChooserBinding.inflate(getLayoutInflater());
         chooser.mediaSummary.setText(getResources().getQuantityString(R.plurals.media_files_found, streams.size(), streams.size()));
         int margin = Math.round(6 * getResources().getDisplayMetrics().density);
@@ -236,7 +243,7 @@ public final class BrowserFragment extends Fragment {
         }
         ViewGroup.LayoutParams scrollParams = chooser.mediaListScroll.getLayoutParams(); scrollParams.height = Math.round(Math.min(320, streams.size() * 64) * getResources().getDisplayMetrics().density); chooser.mediaListScroll.setLayoutParams(scrollParams);
         BottomSheetDialog dialog = new BottomSheetDialog(requireContext()); dialog.setContentView(chooser.getRoot());
-        for (int i = 0; i < streams.size(); i++) { YouTubeExtractor.Stream stream = streams.get(i); chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); downloadStream(stream, resolution.title()); }); }
+        for (int i = 0; i < streams.size(); i++) { YouTubeExtractor.Stream stream = streams.get(i); chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); downloadStream(stream, video.title()); }); }
         dialog.show();
     }
     private void downloadStream(YouTubeExtractor.Stream stream, String title) {

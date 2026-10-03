@@ -13,19 +13,24 @@ import android.os.IBinder;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.nio.ByteBuffer;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
+import zm.co.codelabs.adm.engine.DownloadPlanner;
+import zm.co.codelabs.adm.engine.model.ByteRange;
+import zm.co.codelabs.adm.engine.model.DownloadRequest;
+import zm.co.codelabs.adm.engine.model.ProbeResult;
+import zm.co.codelabs.adm.engine.model.TransferRequest;
+import zm.co.codelabs.adm.storage.PositionedFileWriter;
+import zm.co.codelabs.adm.transport.TransportCall;
+import zm.co.codelabs.adm.transport.okhttp.OkHttpTransport;
 import zm.co.codelabs.adm.R;
 import zm.co.codelabs.adm.platform.notification.DownloadNotifications;
 import zm.co.codelabs.adm.storage.DownloadPublisher;
@@ -41,7 +46,7 @@ public final class YouTubeAdaptiveDownloadService extends Service {
 
     private final ExecutorService coordinator = Executors.newSingleThreadExecutor(r -> new Thread(r, "youtube-adaptive"));
     private final ExecutorService transfers = Executors.newFixedThreadPool(2, r -> new Thread(r, "youtube-track"));
-    private final OkHttpClient client = new OkHttpClient.Builder().retryOnConnectionFailure(true).build();
+    private final ExecutorService segments = Executors.newFixedThreadPool(16, r -> new Thread(r, "youtube-segment"));
 
     @Override public void onCreate() {
         super.onCreate();
@@ -90,21 +95,47 @@ public final class YouTubeAdaptiveDownloadService extends Service {
     }
 
     private void download(String url, Map<String, String> headers, File target) {
-        Request.Builder request = new Request.Builder().url(url);
-        headers.forEach((name, value) -> {
-            if (value != null && !value.isBlank() && !name.equalsIgnoreCase("Host")
-                    && !name.equalsIgnoreCase("Content-Length")) request.header(name, value);
-        });
-        request.header("Accept-Encoding", "identity");
-        try (Response response = client.newCall(request.get().build()).execute()) {
-            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
-            ResponseBody body = response.body();
-            if (body == null) throw new IOException("Empty media response");
-            try (InputStream in = body.byteStream(); FileOutputStream out = new FileOutputStream(target)) {
+        try (OkHttpTransport transport = new OkHttpTransport()) {
+            ProbeResult probe = transport.probe(new DownloadRequest(url, headers));
+            List<ByteRange> ranges = new DownloadPlanner().plan(probe, 8);
+            if (!ranges.isEmpty() && probe.safeForMultipart()) {
+                try (PositionedFileWriter writer = new PositionedFileWriter(target, probe.contentLength())) {
+                    List<Future<?>> workers = new ArrayList<>();
+                    for (ByteRange range : ranges) {
+                        workers.add(segments.submit(() -> copyRange(transport, probe.resolvedUrl(), headers, range, writer)));
+                    }
+                    for (Future<?> worker : workers) worker.get();
+                    writer.force(false);
+                }
+                return;
+            }
+            try (TransportCall call = transport.open(new TransferRequest(
+                    probe.resolvedUrl(), headers, null, null));
+                 java.io.FileOutputStream out = new java.io.FileOutputStream(target)) {
                 byte[] buffer = new byte[256 * 1024];
+                InputStream in = call.body();
                 int n;
                 while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
                 out.getFD().sync();
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void copyRange(OkHttpTransport transport, String url, Map<String, String> headers,
+                                  ByteRange range, PositionedFileWriter writer) {
+        try (TransportCall call = transport.open(new TransferRequest(url, headers, range, null))) {
+            byte[] buffer = new byte[128 * 1024];
+            InputStream in = call.body();
+            long position = range.start();
+            long remaining = range.length();
+            while (remaining > 0) {
+                int n = in.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+                if (n < 0) throw new IOException("Range ended early");
+                writer.write(position, buffer, 0, n);
+                position += n;
+                remaining -= n;
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -213,6 +244,7 @@ public final class YouTubeAdaptiveDownloadService extends Service {
     @Override public void onDestroy() {
         coordinator.shutdownNow();
         transfers.shutdownNow();
+        segments.shutdownNow();
         super.onDestroy();
     }
 }

@@ -35,11 +35,16 @@ public final class YouTubeExtractorTest {
         YouTubeExtractor.Stream video = streams.get(0);
         assertEquals(18, video.itag());
         assertFalse(video.audioOnly());
+        assertTrue(video.progressive());
+        assertTrue(video.hasVideo());
+        assertTrue(video.hasAudio());
         assertTrue(video.label().contains("360p"));
         assertTrue(video.suggestedFileName("Never Gonna Give You Up").endsWith(".mp4"));
         YouTubeExtractor.Stream audio = streams.get(1);
         assertEquals(140, audio.itag());
         assertTrue(audio.audioOnly());
+        assertFalse(audio.hasVideo());
+        assertTrue(audio.hasAudio());
         assertEquals("Never Gonna Give You Up", YouTubeExtractor.parseTitle(json));
     }
 
@@ -126,6 +131,21 @@ public final class YouTubeExtractorTest {
         assertEquals("https://www.youtube.com", headers.get("Origin"));
         assertEquals("https://www.youtube.com/watch?v=dQw4w9WgXcQ", headers.get("Referer"));
         assertEquals("*/*", headers.get("Accept"));
+    }
+
+    @Test public void identifiesAdaptiveVideoOnlyFormats() {
+        String json = "{\"streamingData\":{\"adaptiveFormats\":[{\"itag\":137,"
+                + "\"url\":\"https://rr1.googlevideo.com/videoplayback?itag=137\","
+                + "\"mimeType\":\"video/mp4; codecs=\\\"avc1\\\"\","
+                + "\"qualityLabel\":\"1080p\",\"width\":1920,\"height\":1080,"
+                + "\"fps\":60,\"bitrate\":4500000}]}}";
+        YouTubeExtractor.Stream stream = YouTubeExtractor.parsePlayerResponse(json).get(0);
+        assertTrue(stream.videoOnly());
+        assertFalse(stream.hasAudio());
+        assertEquals(1920, stream.width());
+        assertEquals(1080, stream.height());
+        assertEquals(60, stream.fps());
+        assertTrue(stream.label().contains("video only"));
     }
 
 }

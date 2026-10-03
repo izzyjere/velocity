@@ -106,6 +106,19 @@ public final class YouTubeExtractor {
         }
     }
 
+    /** yt-dlp-style extraction result with normalized metadata and formats. */
+    public record VideoInfo(String videoId, String title, List<Stream> formats) {
+        public VideoInfo {
+            formats = formats == null ? List.of() : List.copyOf(formats);
+        }
+        public List<Stream> directlyDownloadable() {
+            return formats.stream().filter(stream -> stream.progressive() || stream.audioOnly()).toList();
+        }
+        public List<Stream> mergeRequired() {
+            return formats.stream().filter(Stream::videoOnly).toList();
+        }
+    }
+
     /** A single downloadable YouTube format plus the HTTP context required to replay it. */
     public record Stream(String url, int itag, String mimeType, String qualityLabel,
                          boolean audioOnly, long contentLength, Map<String, String> requestHeaders,
@@ -168,6 +181,13 @@ public final class YouTubeExtractor {
             if (c == '&' || c == '?' || c == '/' || c == '#') { end = i; break; }
         }
         return value.substring(0, end);
+    }
+
+    /** Normalized extraction API used by callers that do not need legacy Resolution fields. */
+    public VideoInfo extract(String pageUrl, BrowserSession session, String poToken,
+                             Map<String, String> transformedNs) throws IOException {
+        Resolution resolution = resolve(pageUrl, session, poToken, transformedNs);
+        return new VideoInfo(videoId(pageUrl), resolution.title(), resolution.streams());
     }
 
     /** Resolves the title and streams available for the given YouTube page URL. */

@@ -37,6 +37,8 @@ import zm.co.codelabs.adm.R;
 import zm.co.codelabs.adm.media.MediaDiscovery;
 import zm.co.codelabs.adm.media.YouTubeExtractor;
 import zm.co.codelabs.adm.media.YouTubePoTokenProvider;
+import zm.co.codelabs.adm.platform.service.YouTubeAdaptiveDownloadService;
+import androidx.core.content.ContextCompat;
 
 public final class BrowserFragment extends Fragment {
     private static final String ARG_URL = "initial_url";
@@ -223,7 +225,7 @@ public final class BrowserFragment extends Fragment {
         }
     }
     private void showYouTubeStreams(YouTubeExtractor.VideoInfo video) {
-        List<YouTubeExtractor.Stream> streams = video.directlyDownloadable();
+        List<YouTubeExtractor.Stream> streams = video.selectableFormats();
         if (streams.isEmpty()) {
             new MaterialAlertDialogBuilder(requireContext())
                     .setTitle(R.string.no_direct_media_title)
@@ -231,7 +233,7 @@ public final class BrowserFragment extends Fragment {
                     .setPositiveButton(android.R.string.ok, null).show();
             return;
         }
-        if (streams.size() == 1) { downloadStream(streams.get(0), video.title()); return; }
+        if (streams.size() == 1) { handleYouTubeSelection(video, streams.get(0)); return; }
         BottomSheetMediaChooserBinding chooser = BottomSheetMediaChooserBinding.inflate(getLayoutInflater());
         chooser.mediaSummary.setText(getResources().getQuantityString(R.plurals.media_files_found, streams.size(), streams.size()));
         int margin = Math.round(6 * getResources().getDisplayMetrics().density);
@@ -243,9 +245,47 @@ public final class BrowserFragment extends Fragment {
         }
         ViewGroup.LayoutParams scrollParams = chooser.mediaListScroll.getLayoutParams(); scrollParams.height = Math.round(Math.min(320, streams.size() * 64) * getResources().getDisplayMetrics().density); chooser.mediaListScroll.setLayoutParams(scrollParams);
         BottomSheetDialog dialog = new BottomSheetDialog(requireContext()); dialog.setContentView(chooser.getRoot());
-        for (int i = 0; i < streams.size(); i++) { YouTubeExtractor.Stream stream = streams.get(i); chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); downloadStream(stream, video.title()); }); }
+        for (int i = 0; i < streams.size(); i++) { YouTubeExtractor.Stream stream = streams.get(i); chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); handleYouTubeSelection(video, stream); }); }
         dialog.show();
     }
+    private void handleYouTubeSelection(YouTubeExtractor.VideoInfo video, YouTubeExtractor.Stream stream) {
+        if (!stream.videoOnly()) {
+            downloadStream(stream, video.title());
+            return;
+        }
+        YouTubeExtractor.Stream audio = video.bestAudioFor(stream);
+        if (audio == null) {
+            new MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.no_direct_media_title)
+                    .setMessage("No compatible audio stream was found for this video quality.")
+                    .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+        startAdaptiveYouTubeDownload(stream, audio, stream.suggestedFileName(video.title()));
+    }
+
+    private void startAdaptiveYouTubeDownload(YouTubeExtractor.Stream video, YouTubeExtractor.Stream audio,
+                                              String suggestedName) {
+        Map<String, String> videoHeaders = new LinkedHashMap<>(video.requestHeaders());
+        Map<String, String> audioHeaders = new LinkedHashMap<>(audio.requestHeaders());
+        String videoCookies = CookieManager.getInstance().getCookie(video.url());
+        String audioCookies = CookieManager.getInstance().getCookie(audio.url());
+        if (videoCookies != null && !videoCookies.isBlank()) videoHeaders.put("Cookie", videoCookies);
+        if (audioCookies != null && !audioCookies.isBlank()) audioHeaders.put("Cookie", audioCookies);
+        Intent intent = new Intent(requireContext(), YouTubeAdaptiveDownloadService.class)
+                .setAction(YouTubeAdaptiveDownloadService.ACTION_START)
+                .putExtra(YouTubeAdaptiveDownloadService.EXTRA_VIDEO_URL, video.url())
+                .putExtra(YouTubeAdaptiveDownloadService.EXTRA_AUDIO_URL, audio.url())
+                .putExtra(YouTubeAdaptiveDownloadService.EXTRA_FILE_NAME, suggestedName)
+                .putExtra(YouTubeAdaptiveDownloadService.EXTRA_VIDEO_HEADERS,
+                        YouTubeAdaptiveDownloadService.headers(videoHeaders))
+                .putExtra(YouTubeAdaptiveDownloadService.EXTRA_AUDIO_HEADERS,
+                        YouTubeAdaptiveDownloadService.headers(audioHeaders));
+        ContextCompat.startForegroundService(requireContext(), intent);
+        com.google.android.material.snackbar.Snackbar.make(binding.getRoot(),
+                "Adaptive YouTube download started", com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show();
+    }
+
     private void downloadStream(YouTubeExtractor.Stream stream, String title) {
         Map<String, String> headers = new LinkedHashMap<>(stream.requestHeaders());
         String cookies = CookieManager.getInstance().getCookie(stream.url());

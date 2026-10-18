@@ -35,6 +35,7 @@ import zm.co.codelabs.adm.databinding.BottomSheetMediaChooserBinding;
 import zm.co.codelabs.adm.databinding.FragmentBrowserBinding;
 import zm.co.codelabs.adm.ui.MainActivity;
 import zm.co.codelabs.adm.R;
+import zm.co.codelabs.adm.media.FacebookExtractor;
 import zm.co.codelabs.adm.media.MediaDiscovery;
 import zm.co.codelabs.adm.media.YouTubeExtractor;
 import zm.co.codelabs.adm.media.YouTubePoTokenProvider;
@@ -59,12 +60,19 @@ public final class BrowserFragment extends Fragment {
             "rawN=fu.searchParams.get('n')||'';if(rawN)break;}}}catch(x){}" +
             "return JSON.stringify({playerResponse:typeof p==='string'?p:(p?JSON.stringify(p):''),visitorData:v,rawN:rawN,playerJsUrl:playerJs});" +
             "}catch(e){return '{}';}})();";
+    /** Page head plus the inline data scripts that carry Facebook's progressive video URLs. */
+    private static final String FACEBOOK_PAGE_SCRIPT =
+            "(function(){try{var h=document.head?document.head.innerHTML:'';" +
+            "document.querySelectorAll('script').forEach(function(s){var t=s.textContent||'';" +
+            "if(t.indexOf('browser_native_')>=0||t.indexOf('playable_url')>=0)h+=t;});" +
+            "return h;}catch(e){return '';}})();";
     private FragmentBrowserBinding binding;
     private final LinkedHashMap<String, MediaCandidate> mediaCandidates = new LinkedHashMap<>();
     private boolean addressBarVisible = true;
     private int accumulatedScroll;
     private final ExecutorService extractionExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "youtube-extract"));
     private final YouTubeExtractor youTubeExtractor = new YouTubeExtractor();
+    private final FacebookExtractor facebookExtractor = new FacebookExtractor();
     private YouTubePoTokenProvider poTokenProvider;
     private boolean extracting;
     private String pendingUrl;
@@ -151,6 +159,10 @@ public final class BrowserFragment extends Fragment {
     private void chooseMedia() {
         String currentUrl = binding.web.getUrl();
         if (mediaCandidates.isEmpty() && MediaDiscovery.isYouTubeUrl(currentUrl) && YouTubeExtractor.videoId(currentUrl) != null) { resolveYouTube(currentUrl); return; }
+        if (FacebookExtractor.isFacebookUrl(currentUrl)) { resolveFacebook(currentUrl); return; }
+        chooseCandidates();
+    }
+    private void chooseCandidates() {
         MediaCandidate[] candidates = mediaCandidates.values().toArray(new MediaCandidate[0]);
         if (candidates.length == 0) { new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.no_direct_media_title).setMessage(R.string.no_direct_media_message).setPositiveButton(android.R.string.ok, null).show(); return; }
         if (candidates.length == 1) { download(candidates[0]); return; }
@@ -167,6 +179,59 @@ public final class BrowserFragment extends Fragment {
         BottomSheetDialog dialog = new BottomSheetDialog(requireContext()); dialog.setContentView(chooser.getRoot());
         for (int i = 0; i < candidates.length; i++) { MediaCandidate candidate = candidates[i]; chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); download(candidate); }); }
         dialog.show();
+    }
+    private void resolveFacebook(String pageUrl) {
+        if (extracting) return;
+        extracting = true;
+        binding.loading.setVisibility(View.VISIBLE); binding.loading.setIndeterminate(true);
+        String cookies = CookieManager.getInstance().getCookie(pageUrl);
+        String userAgent = binding.web.getSettings().getUserAgentString();
+        binding.web.evaluateJavascript(FACEBOOK_PAGE_SCRIPT, encoded -> {
+            String rendered = null;
+            try { Object decoded = new JSONTokener(encoded == null ? "" : encoded).nextValue(); if (decoded instanceof String) rendered = (String) decoded; } catch (Exception ignored) { }
+            final String html = rendered;
+            extractionExecutor.execute(() -> {
+                FacebookExtractor.VideoInfo info = null; String error = null;
+                try { info = facebookExtractor.extract(pageUrl, html, cookies, userAgent); }
+                catch (Exception e) { error = e.getMessage(); }
+                final FacebookExtractor.VideoInfo result = info; final String failure = error;
+                if (binding == null) return;
+                binding.getRoot().post(() -> {
+                    extracting = false;
+                    if (binding == null) return;
+                    binding.loading.setIndeterminate(false); binding.loading.setVisibility(View.GONE);
+                    if (result == null || result.streams().isEmpty()) { showFacebookFallback(failure); return; }
+                    showFacebookStreams(result);
+                });
+            });
+        });
+    }
+    private void showFacebookFallback(String failure) {
+        if (!mediaCandidates.isEmpty()) { chooseCandidates(); return; }
+        new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.no_direct_media_title).setMessage(failure == null ? getString(R.string.no_direct_media_message) : failure).setPositiveButton(android.R.string.ok, null).show();
+    }
+    private void showFacebookStreams(FacebookExtractor.VideoInfo video) {
+        List<FacebookExtractor.Stream> streams = video.streams();
+        if (streams.size() == 1) { downloadFacebookStream(video, streams.get(0)); return; }
+        BottomSheetMediaChooserBinding chooser = BottomSheetMediaChooserBinding.inflate(getLayoutInflater());
+        chooser.mediaSummary.setText(getResources().getQuantityString(R.plurals.media_files_found, streams.size(), streams.size()));
+        int margin = Math.round(6 * getResources().getDisplayMetrics().density);
+        for (FacebookExtractor.Stream stream : streams) {
+            MaterialButton option = new MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
+            option.setText(stream.label()); option.setAllCaps(false); option.setGravity(Gravity.CENTER_VERTICAL | Gravity.START); option.setIconResource(R.drawable.ic_download); option.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT); params.setMargins(0, margin, 0, margin); option.setLayoutParams(params);
+            chooser.mediaOptions.addView(option);
+        }
+        ViewGroup.LayoutParams scrollParams = chooser.mediaListScroll.getLayoutParams(); scrollParams.height = Math.round(Math.min(320, streams.size() * 64) * getResources().getDisplayMetrics().density); chooser.mediaListScroll.setLayoutParams(scrollParams);
+        BottomSheetDialog dialog = new BottomSheetDialog(requireContext()); dialog.setContentView(chooser.getRoot());
+        for (int i = 0; i < streams.size(); i++) { FacebookExtractor.Stream stream = streams.get(i); chooser.mediaOptions.getChildAt(i).setOnClickListener(v -> { dialog.dismiss(); downloadFacebookStream(video, stream); }); }
+        dialog.show();
+    }
+    private void downloadFacebookStream(FacebookExtractor.VideoInfo video, FacebookExtractor.Stream stream) {
+        Map<String, String> headers = new LinkedHashMap<>(stream.requestHeaders());
+        String userAgent = binding.web.getSettings().getUserAgentString();
+        if (userAgent != null) headers.put("User-Agent", userAgent);
+        ((MainActivity) requireActivity()).showAddDownload(stream.url(), headers, stream.suggestedFileName(video.title(), video.videoId()));
     }
     private void download(MediaCandidate candidate) { intercept(candidate.url, binding.web.getSettings().getUserAgentString(), candidate.headers); }
     private void resolveYouTube(String pageUrl) {

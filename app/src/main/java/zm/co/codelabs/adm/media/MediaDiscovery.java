@@ -17,7 +17,7 @@ public final class MediaDiscovery {
             "wav", "flac", "alac", "ape", "amr", "wma", "mid", "midi");
     private static final String[] MEDIA_PAGE_HOSTS = {
             "youtube.com", "youtu.be", "vimeo.com", "dailymotion.com", "tiktok.com", "twitch.tv",
-            "facebook.com", "instagram.com", "soundcloud.com", "bandcamp.com", "peertube.tv",
+            "facebook.com", "fb.watch", "instagram.com", "soundcloud.com", "bandcamp.com", "peertube.tv",
             "music.apple.com", "deezer.com", "tidal.com", "audiomack.com", "mixcloud.com"
     };
     private static final String[] RESTRICTED_HOSTS = {
@@ -53,6 +53,7 @@ public final class MediaDiscovery {
         if (url == null || isRestrictedPlatformPage(value)) return false;
         String query = url.getQuery();
         String decoded = query == null ? "" : decode(query).toLowerCase(Locale.ROOT);
+        if (isRangeFragment(query)) return false;
         String path = url.getPath().toLowerCase(Locale.ROOT);
         int dot = path.lastIndexOf('.');
         if (dot >= 0 && MEDIA_EXTENSIONS.contains(path.substring(dot + 1))) return true;
@@ -80,6 +81,12 @@ public final class MediaDiscovery {
         if (name.isBlank()) name = "Media file";
         if (name.length() > 54) name = name.substring(0, 51) + "…";
         return name + " · " + url.getHost();
+    }
+
+    /** DASH players (e.g. Facebook) request byte slices of a track; a slice is never a playable file. */
+    private static boolean isRangeFragment(String rawQuery) {
+        Map<String, String> values = queryParameters(rawQuery);
+        return values.containsKey("bytestart") || values.containsKey("byteend");
     }
 
     private static boolean hasMediaFormat(String rawQuery) {

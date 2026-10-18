@@ -13,6 +13,7 @@ public final class MediaDiscoveryTest {
         assertTrue(MediaDiscovery.isDirectMediaUrl("https://audio.example/album/song.flac"));
         assertFalse(MediaDiscovery.isDirectMediaUrl("https://example.com/watch/7"));
         assertFalse(MediaDiscovery.isDirectMediaUrl("blob:https://example.com/identifier"));
+        assertFalse(MediaDiscovery.isDirectMediaUrl("https://video.fna.fbcdn.net/o1/v/track.mp4?_nc_cat=1&bytestart=0&byteend=1024"));
     }
 
     @Test public void routesKnownMediaPagesAndRecognizesAuthorizedMediaRequest() {

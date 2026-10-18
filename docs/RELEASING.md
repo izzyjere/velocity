@@ -1,6 +1,6 @@
 # Releasing Velocity
 
-Push a semantic version tag such as `v1.0.0`. The release workflow derives Android `versionName` and `versionCode`, runs the unit tests and lint, builds a minified signed APK, verifies its certificate, and publishes:
+Push a semantic version tag such as `v1.0.0`. After publishing, the workflow also commits the new version and APK link to the README's `release:start`/`release:end` block on the default branch (skipped if the README already lists a newer version). The release workflow derives Android `versionName` and `versionCode`, runs the unit tests and lint, builds a minified signed APK, verifies its certificate, and publishes:
 
 ```text
 velocity-{version}.apk

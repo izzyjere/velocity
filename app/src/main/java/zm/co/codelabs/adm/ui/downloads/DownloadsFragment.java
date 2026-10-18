@@ -2,8 +2,6 @@ package zm.co.codelabs.adm.ui.downloads;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
-import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -12,7 +10,6 @@ import android.widget.PopupMenu;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -29,6 +26,7 @@ import zm.co.codelabs.adm.data.db.entity.DownloadEntity;
 import zm.co.codelabs.adm.databinding.FragmentDownloadsBinding;
 import zm.co.codelabs.adm.databinding.DialogTextInputBinding;
 import zm.co.codelabs.adm.platform.service.DownloadExecution;
+import zm.co.codelabs.adm.storage.DownloadFiles;
 
 public final class DownloadsFragment extends Fragment implements DownloadAdapter.Actions {
     private static final ExecutorService IO = Executors.newSingleThreadExecutor(r -> new Thread(r, "download-actions"));
@@ -41,7 +39,7 @@ public final class DownloadsFragment extends Fragment implements DownloadAdapter
     private final ActivityResultLauncher<String> moveFile = registerForActivityResult(new ActivityResultContracts.CreateDocument("application/octet-stream"), uri -> {
         DownloadEntity item = pendingMove; pendingMove = null; if (uri == null || item == null) return;
         android.content.Context context = requireContext().getApplicationContext();
-        IO.execute(() -> { try (java.io.InputStream in = new java.io.FileInputStream(item.destination); java.io.OutputStream out = context.getContentResolver().openOutputStream(uri, "w")) { if (out == null) throw new java.io.IOException("Destination is not writable"); byte[] data = new byte[128 * 1024]; int n; while ((n = in.read(data)) != -1) out.write(data, 0, n); } catch (Exception e) { toast("Move failed: " + e.getMessage()); return; } new File(item.destination).delete(); app().repository().delete(item.id); toast("File moved"); });
+        IO.execute(() -> { try (java.io.InputStream in = DownloadFiles.openInput(context, item); java.io.OutputStream out = context.getContentResolver().openOutputStream(uri, "w")) { if (out == null) throw new java.io.IOException("Destination is not writable"); byte[] data = new byte[128 * 1024]; int n; while ((n = in.read(data)) != -1) out.write(data, 0, n); } catch (Exception e) { toast("Move failed: " + e.getMessage()); return; } DownloadFiles.delete(context, item); app().repository().delete(item.id); toast("File moved"); });
     });
     @Override public void onAttach(@NonNull android.content.Context context) { super.onAttach(context); application = (App) context.getApplicationContext(); }
     @Nullable @Override public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle state) { binding = FragmentDownloadsBinding.inflate(inflater, container, false); return binding.getRoot(); }
@@ -96,9 +94,9 @@ public final class DownloadsFragment extends Fragment implements DownloadAdapter
             catch (Exception e) { toast(e.getMessage()); }
         })).show();
     }
-    private void confirmDelete(DownloadEntity item, boolean deleteFile) { new MaterialAlertDialogBuilder(requireContext()).setTitle(deleteFile ? "Delete downloaded data?" : "Remove from history?").setMessage(deleteFile ? "The file and any partial data will be permanently deleted." : "The downloaded file will remain on this device.").setNegativeButton("Cancel", null).setPositiveButton("Delete", (d,w) -> IO.execute(() -> { app().coordinator().cancel(item.id); if (deleteFile) { new File(item.destination).delete(); new File(item.destination + ".part").delete(); } app().repository().delete(item.id); })).show(); }
-    private void open(DownloadEntity item) { try { Uri uri = FileProvider.getUriForFile(requireContext(), requireContext().getPackageName() + ".files", new File(item.destination)); startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri, item.mimeType == null ? "application/octet-stream" : item.mimeType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)); } catch (Exception e) { toast("No app can open this file"); } }
-    private void share(DownloadEntity item) { try { Uri uri = FileProvider.getUriForFile(requireContext(), requireContext().getPackageName() + ".files", new File(item.destination)); startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType(item.mimeType == null ? "application/octet-stream" : item.mimeType).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share file")); } catch (Exception e) { toast("Unable to share this file"); } }
+    private void confirmDelete(DownloadEntity item, boolean deleteFile) { new MaterialAlertDialogBuilder(requireContext()).setTitle(deleteFile ? "Delete downloaded data?" : "Remove from history?").setMessage(deleteFile ? "The file and any partial data will be permanently deleted." : "The downloaded file will remain on this device.").setNegativeButton("Cancel", null).setPositiveButton("Delete", (d,w) -> IO.execute(() -> { app().coordinator().cancel(item.id); if (deleteFile) DownloadFiles.delete(application, item); app().repository().delete(item.id); })).show(); }
+    private void open(DownloadEntity item) { try { startActivity(DownloadFiles.viewIntent(requireContext(), item)); } catch (android.content.ActivityNotFoundException e) { toast("No app can open this file"); } catch (Exception e) { toast("This file is no longer available"); } }
+    private void share(DownloadEntity item) { try { startActivity(DownloadFiles.shareIntent(requireContext(), item)); } catch (Exception e) { toast("Unable to share this file"); } }
     private void copyUrl(DownloadEntity item) { requireContext().getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Download URL", item.canonicalUrl)); toast("Source URL copied"); }
     private long remaining(DownloadEntity item) { return item.totalBytes > 0 ? Math.max(0, item.totalBytes - item.completedBytes) : -1; }
     private App app() { return application; }

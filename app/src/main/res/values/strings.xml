@@ -34,6 +34,11 @@
     <string name="back">Back</string>
     <string name="application">Application</string>
     <string name="check_for_updates">Check for updates</string>
+    <string name="update_notifications">Notify me about new versions</string>
+    <string name="notification_channel_updates">App updates</string>
+    <string name="notification_channel_updates_description">Tells you when a new Velocity version is released</string>
+    <string name="update_notification_title">Velocity %1$s is available</string>
+    <string name="update_notification_text">Tap to review and install the update.</string>
     <string name="app_update">App update</string>
     <string name="current_version">Installed version: %1$s</string>
     <string name="checking_for_updates">Checking GitHub for updates…</string>

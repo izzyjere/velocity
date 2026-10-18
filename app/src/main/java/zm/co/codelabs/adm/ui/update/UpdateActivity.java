@@ -21,6 +21,7 @@ import zm.co.codelabs.adm.databinding.ActivityUpdateBinding;
 import zm.co.codelabs.adm.platform.update.ApkVerifier;
 import zm.co.codelabs.adm.platform.update.GitHubUpdateClient;
 import zm.co.codelabs.adm.platform.update.SemanticVersion;
+import zm.co.codelabs.adm.platform.update.UpdateCheckWorker;
 import zm.co.codelabs.adm.platform.update.UpdateInfo;
 import zm.co.codelabs.adm.platform.update.UpdateInstaller;
 
@@ -43,6 +44,7 @@ public final class UpdateActivity extends AppCompatActivity {
         super.onCreate(state);
         binding = ActivityUpdateBinding.inflate(getLayoutInflater()); setContentView(binding.getRoot());
         client = new GitHubUpdateClient(this);
+        UpdateCheckWorker.dismiss(this);
         ViewCompat.setOnApplyWindowInsetsListener(binding.root, (view, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             view.setPadding(view.getPaddingLeft(), bars.top, view.getPaddingRight(), bars.bottom); return insets;

@@ -16,6 +16,7 @@ import zm.co.codelabs.adm.transport.okhttp.OkHttpTransport;
 import zm.co.codelabs.adm.platform.connectivity.ConnectivityMonitor;
 import zm.co.codelabs.adm.platform.notification.DownloadNotifications;
 import zm.co.codelabs.adm.platform.logging.AppLogStore;
+import zm.co.codelabs.adm.platform.update.UpdateCheckWorker;
 import zm.co.codelabs.adm.storage.StorageCapacity;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatDelegate;
@@ -51,6 +52,7 @@ public final class App extends Application implements Configuration.Provider {
         coordinator.setGlobalSpeedLimit(getSharedPreferences("settings", MODE_PRIVATE).getLong("speed_limit", 0));
         connectivity = new ConnectivityMonitor(this, coordinator);
         startup.execute(coordinator::recover);
+        UpdateCheckWorker.schedule(this);
     }
     public DownloadRepository repository() { return repository; }
     public DownloadCoordinator coordinator() { return coordinator; }

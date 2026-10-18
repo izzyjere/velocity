@@ -1,0 +1,6 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Glyph scaled into the 66dp adaptive-icon safe zone so circular and squircle masks never clip it. -->
+    <group android:pivotX="54" android:pivotY="57" android:scaleX="0.62" android:scaleY="0.62" android:translateY="-3">
+        <path android:fillColor="#FFFFFF" android:pathData="M49,22h10v38l14,-14 7,7 -26,26 -26,-26 7,-7 14,14zM27,84h54v8h-54z" />
+    </group>
+</vector>

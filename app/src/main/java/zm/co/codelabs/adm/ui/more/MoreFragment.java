@@ -18,6 +18,7 @@ import androidx.fragment.app.Fragment;
 import zm.co.codelabs.adm.App;
 import zm.co.codelabs.adm.databinding.FragmentMoreBinding;
 import zm.co.codelabs.adm.R;
+import zm.co.codelabs.adm.platform.update.UpdateCheckWorker;
 import zm.co.codelabs.adm.ui.logs.LogsActivity;
 import zm.co.codelabs.adm.ui.update.UpdateActivity;
 
@@ -40,6 +41,8 @@ public final class MoreFragment extends Fragment {
         binding.resetDestination.setOnClickListener(v -> { prefs().edit().remove("destination_tree_uri").apply(); updateDestinationLabel(); });
         binding.save.setOnClickListener(v -> save());
         binding.logs.setOnClickListener(v -> startActivity(new Intent(requireContext(), LogsActivity.class)));
+        binding.updateNotifications.setChecked(prefs.getBoolean(UpdateCheckWorker.PREF_ENABLED, true));
+        binding.updateNotifications.setOnCheckedChangeListener((button, checked) -> { prefs().edit().putBoolean(UpdateCheckWorker.PREF_ENABLED, checked).apply(); UpdateCheckWorker.schedule(requireContext()); });
         binding.updates.setOnClickListener(v -> startActivity(new Intent(requireContext(), UpdateActivity.class)));
         binding.github.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/izzyjere"))));
     }

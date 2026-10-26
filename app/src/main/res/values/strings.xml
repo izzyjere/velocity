@@ -60,8 +60,8 @@
     <string name="show_browser_controls">Show address bar</string>
     <plurals name="downloadable_media_count"><item quantity="one">Download media (%1$d file)</item><item quantity="other">Download media (%1$d files)</item></plurals>
     <string name="choose_media">Choose media</string>
-    <plurals name="media_files_found"><item quantity="one">%1$d downloadable audio or video file found</item><item quantity="other">%1$d downloadable audio or video files found</item></plurals>
+    <plurals name="media_files_found"><item quantity="one">%1$d downloadable file found</item><item quantity="other">%1$d downloadable files found</item></plurals>
     <string name="no_direct_media_title">No direct media available</string>
-    <string name="no_direct_media_message">This page has not exposed a downloadable video or audio file yet. Start playback or use the site’s authorized offline feature. Protected and DRM streams are not intercepted.</string>
+    <string name="no_direct_media_message">This page has not exposed a downloadable video, audio, or full-size image file yet. Start playback or use the site’s authorized offline feature. Protected and DRM streams are not intercepted.</string>
     <plurals name="active_downloads"><item quantity="one">%1$d active • %2$s</item><item quantity="other">%1$d active • %2$s</item></plurals>
 </resources>

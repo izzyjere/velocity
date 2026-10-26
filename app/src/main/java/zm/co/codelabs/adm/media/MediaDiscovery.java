@@ -24,6 +24,34 @@ public final class MediaDiscovery {
             "netflix.com", "spotify.com", "music.apple.com", "deezer.com", "tidal.com"
     };
     private static final String[] YOUTUBE_HOSTS = {"youtube.com", "youtu.be", "youtube-nocookie.com"};
+    /** Raster formats worth saving; SVG and ICO are almost always logos, icons, or UI chrome. */
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of(
+            "jpg", "jpeg", "jfif", "png", "webp", "avif", "gif", "bmp", "heic", "heif", "tif", "tiff");
+    private static final Set<String> NON_CONTENT_IMAGE_EXTENSIONS = Set.of("svg", "svgz", "ico", "cur");
+    /** Images smaller than this on either side are thumbnails, icons, tracking pixels, or spacers. */
+    static final int MIN_IMAGE_SIDE = 300;
+    /** Strips wider or taller than this ratio are banners, dividers, or skyscraper ads. */
+    private static final double MAX_IMAGE_ASPECT_RATIO = 3.2;
+    /** Standard IAB ad slot sizes that pass the size filter but are never page content. */
+    private static final Set<String> AD_SLOT_SIZES = Set.of(
+            "300x250", "336x280", "300x600", "300x1050", "970x250", "970x90", "728x90", "468x60",
+            "320x480", "480x320", "250x250", "200x200", "160x600", "120x600");
+    /** Matched anywhere in a lowercase hint, so "site-logo" and "headerBanner" are both caught. */
+    private static final String[] JUNK_IMAGE_FRAGMENTS = {
+            "logo", "banner", "favicon", "sprite", "avatar", "placeholder", "spacer", "watermark",
+            "advert", "sponsor", "doubleclick", "tracking", "pixel.gif", "blank.gif", "loading.gif",
+            "apple-touch-icon", "emoji", "emoticon", "masthead", "brandmark"
+    };
+    /** Matched only as whole words to avoid false hits like "uploads" or "silicon". */
+    private static final Set<String> JUNK_IMAGE_WORDS = Set.of(
+            "ad", "ads", "adv", "icon", "icons", "badge", "badges", "btn", "button", "beacon",
+            "brand", "branding", "userpic", "flag", "flags", "rating", "stars");
+    private static final String[] AD_HOSTS = {
+            "doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com",
+            "amazon-adsystem.com", "adnxs.com", "taboola.com", "outbrain.com", "criteo.com", "criteo.net",
+            "scorecardresearch.com", "pubmatic.com", "rubiconproject.com", "moatads.com", "adsrvr.org",
+            "facebook.com/tr", "gravatar.com"
+    };
 
     private MediaDiscovery() {
     }
@@ -81,6 +109,63 @@ public final class MediaDiscovery {
         if (name.isBlank()) name = "Media file";
         if (name.length() > 54) name = name.substring(0, 51) + "…";
         return name + " · " + url.getHost();
+    }
+
+    /**
+     * Decides whether an image rendered on a page is real content rather than a logo, banner, ad,
+     * icon, or low-resolution decoration.
+     *
+     * @param width  intrinsic pixel width of the decoded image
+     * @param height intrinsic pixel height of the decoded image
+     * @param hints  alt text, class names, ids, and other element/ancestor descriptors, or null
+     * @param inPageChrome whether the element sits in a header, nav, footer, or aside region
+     */
+    public static boolean isDownloadableImage(String value, int width, int height, String hints, boolean inPageChrome) {
+        URL url = parse(value);
+        if (url == null || inPageChrome || isRestrictedPlatformPage(value)) return false;
+        if (width < MIN_IMAGE_SIDE || height < MIN_IMAGE_SIDE) return false;
+        double ratio = (double) Math.max(width, height) / Math.min(width, height);
+        if (ratio > MAX_IMAGE_ASPECT_RATIO) return false;
+        if (AD_SLOT_SIZES.contains(width + "x" + height)) return false;
+        String path = url.getPath().toLowerCase(Locale.ROOT);
+        String extension = extension(path);
+        if (NON_CONTENT_IMAGE_EXTENSIONS.contains(extension)) return false;
+        String hostAndPath = url.getHost().toLowerCase(Locale.ROOT) + path;
+        for (String host : AD_HOSTS) if (hostAndPath.contains(host)) return false;
+        return !looksLikeJunk(path) && !looksLikeJunk(hints);
+    }
+
+    /** Cheap pre-filter for intercepted requests, used only to decide when to rescan the page's images. */
+    public static boolean looksLikeImageRequest(String value, String accept) {
+        URL url = parse(value);
+        if (url == null) return false;
+        if (accept != null && accept.toLowerCase(Locale.ROOT).startsWith("image/")) return true;
+        return IMAGE_EXTENSIONS.contains(extension(url.getPath().toLowerCase(Locale.ROOT)));
+    }
+
+    public static String imageLabel(String value, int width, int height) {
+        URL url = parse(value);
+        if (url == null) return "Image";
+        String path = url.getPath();
+        String name = decode(path.substring(path.lastIndexOf('/') + 1).replace("+", "%2B"));
+        if (name.isBlank() || !IMAGE_EXTENSIONS.contains(extension(name.toLowerCase(Locale.ROOT)))) name = "Image";
+        if (name.length() > 40) name = name.substring(0, 37) + "…";
+        return name + " · " + width + "×" + height + " · " + url.getHost();
+    }
+
+    private static boolean looksLikeJunk(String hint) {
+        if (hint == null || hint.isBlank()) return false;
+        // Split camelCase before lowercasing so "siteLogoImg" yields the word "logo".
+        String spaced = hint.replaceAll("([a-z])([A-Z])", "$1 $2").toLowerCase(Locale.ROOT);
+        for (String fragment : JUNK_IMAGE_FRAGMENTS) if (spaced.contains(fragment)) return true;
+        for (String word : spaced.split("[^a-z0-9]+")) if (JUNK_IMAGE_WORDS.contains(word)) return true;
+        return false;
+    }
+
+    private static String extension(String path) {
+        int slash = path.lastIndexOf('/');
+        int dot = path.lastIndexOf('.');
+        return dot > slash ? path.substring(dot + 1) : "";
     }
 
     /** DASH players (e.g. Facebook) request byte slices of a track; a slice is never a playable file. */

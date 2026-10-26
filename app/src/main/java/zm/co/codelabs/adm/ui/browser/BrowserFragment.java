@@ -45,6 +45,31 @@ import androidx.core.content.ContextCompat;
 public final class BrowserFragment extends Fragment {
     private static final String ARG_URL = "initial_url";
     private static final int MAX_MEDIA_CANDIDATES = 50;
+    /** Images share the candidate list with audio/video, so cap them to leave room for streams. */
+    private static final int MAX_IMAGE_CANDIDATES = 30;
+    private static final long IMAGE_SCAN_DELAY_MS = 750;
+    /**
+     * Rendered images with their real pixel size and descriptive hints. The largest srcset candidate
+     * (w or x descriptor) is preferred so the full-resolution variant is offered, not the screen-sized one.
+     */
+    private static final String IMAGE_DISCOVERY_SCRIPT =
+            "(function(){try{var out=[],seen={};" +
+            "var chrome='header,nav,footer,aside,[role=banner],[role=navigation],[role=contentinfo]';" +
+            "function cls(e){return e&&typeof e.className==='string'?e.className:'';}" +
+            "function hints(e){var h=[e.alt||'',e.title||'',e.id||'',cls(e)];var p=e.parentElement;" +
+            "for(var d=0;p&&d<3;d++,p=p.parentElement){h.push(p.id||'',cls(p));}return h.join(' ');}" +
+            "function abs(u){try{return new URL(u,document.baseURI).href;}catch(x){return '';}}" +
+            "document.querySelectorAll('img').forEach(function(e){if(out.length>=60)return;" +
+            // naturalWidth is in CSS pixels (divided by the srcset density); attributes size lazy images not yet loaded.
+            "var cw=e.naturalWidth||+e.getAttribute('width')||0,ch=e.naturalHeight||+e.getAttribute('height')||0;" +
+            "var u=e.currentSrc||e.src||'',w=e.naturalWidth||0,h=e.naturalHeight||0;" +
+            "if(cw>0&&ch>0)(e.getAttribute('srcset')||'').split(',').forEach(function(c){" +
+            "var m=c.trim().match(/^(\\S+)\\s+(\\d+(?:\\.\\d+)?)([wx])$/);if(!m)return;" +
+            "var pw=m[3]==='w'?+m[2]:cw*m[2];" +
+            "if(pw>w){var a=abs(m[1]);if(a){u=a;w=Math.round(pw);h=Math.round(pw*ch/cw);}}});" +
+            "if(!/^https?:/i.test(u)||seen[u])return;seen[u]=1;" +
+            "out.push({url:u,width:w,height:h,hints:hints(e),chrome:!!e.closest(chrome)});});" +
+            "return JSON.stringify(out);}catch(e){return '[]';}})();";
     private static final String YOUTUBE_SESSION_SCRIPT =
             "(function(){try{" +
             "var p=window.ytInitialPlayerResponse||null;" +
@@ -76,6 +101,7 @@ public final class BrowserFragment extends Fragment {
     private YouTubePoTokenProvider poTokenProvider;
     private boolean extracting;
     private String pendingUrl;
+    private final Runnable imageScan = () -> { if (binding != null) discoverDocumentImages(binding.web, null); };
     public static BrowserFragment newInstance(String url) { BrowserFragment fragment = new BrowserFragment(); Bundle args = new Bundle(); args.putString(ARG_URL, url); fragment.setArguments(args); return fragment; }
     public void navigateTo(String url) {
         if (url == null || url.isBlank()) return;
@@ -95,11 +121,13 @@ public final class BrowserFragment extends Fragment {
         binding.web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { Uri uri = request.getUrl(); if ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme())) return false; return true; }
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) { mediaCandidates.clear(); if (binding != null) { setAddressBarVisible(true); binding.address.setText(url); updateMediaButton(url); } }
-            @Override public void onPageFinished(WebView view, String url) { if (binding == null) return; binding.address.setText(url); discoverDocumentMedia(view); discoverPerformanceMedia(view); updateMediaButton(url); }
+            @Override public void onPageFinished(WebView view, String url) { if (binding == null) return; binding.address.setText(url); discoverDocumentMedia(view); discoverPerformanceMedia(view); discoverDocumentImages(view, null); updateMediaButton(url); }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 Map<String, String> headers = allowedRequestHeaders(request.getRequestHeaders());
-                view.post(() -> collectCandidate(url, headers));
+                String accept = request.getRequestHeaders().get("Accept");
+                boolean image = MediaDiscovery.looksLikeImageRequest(url, accept);
+                view.post(() -> { collectCandidate(url, headers); if (image) scheduleImageScan(view); });
                 return null;
             }
             @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) { if (binding != null) { binding.web.removeAllViews(); binding.web.destroy(); com.google.android.material.snackbar.Snackbar.make(binding.getRoot(), R.string.browser_render_failure, com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show(); binding.getRoot().post(() -> getParentFragmentManager().beginTransaction().replace(zm.co.codelabs.adm.R.id.content, new BrowserFragment()).commitAllowingStateLoss()); } return true; }
@@ -126,7 +154,7 @@ public final class BrowserFragment extends Fragment {
     private void collectCandidate(String url, Map<String, String> requestHeaders) {
         if (!MediaDiscovery.isDirectMediaUrl(url)) return;
         if (mediaCandidates.size() >= MAX_MEDIA_CANDIDATES || mediaCandidates.containsKey(url)) return;
-        mediaCandidates.put(url, new MediaCandidate(url, MediaDiscovery.label(url), requestHeaders));
+        mediaCandidates.put(url, new MediaCandidate(url, MediaDiscovery.label(url), requestHeaders, false));
         if (binding != null) updateMediaButton(binding.web.getUrl());
     }
     private void discoverDocumentMedia(WebView view) {
@@ -144,6 +172,30 @@ public final class BrowserFragment extends Fragment {
         });
     }
 
+    /** Lazy-loaded images decode after onPageFinished, so rescan shortly after image traffic settles. */
+    private void scheduleImageScan(WebView view) { view.removeCallbacks(imageScan); view.postDelayed(imageScan, IMAGE_SCAN_DELAY_MS); }
+    private void discoverDocumentImages(WebView view, @Nullable Runnable done) {
+        view.evaluateJavascript(IMAGE_DISCOVERY_SCRIPT, encoded -> {
+            if (binding == null) return;
+            try {
+                Object decoded = new JSONTokener(encoded == null ? "" : encoded).nextValue(); JSONArray values = new JSONArray(decoded instanceof String ? (String) decoded : "[]");
+                for (int i = 0; i < values.length(); i++) {
+                    JSONObject image = values.optJSONObject(i);
+                    if (image != null) collectImageCandidate(image.optString("url"), image.optInt("width"), image.optInt("height"), image.optString("hints"), image.optBoolean("chrome"));
+                }
+            } catch (Exception ignored) { }
+            if (done != null) done.run();
+        });
+    }
+    private void collectImageCandidate(String url, int width, int height, String hints, boolean inPageChrome) {
+        if (mediaCandidates.size() >= MAX_MEDIA_CANDIDATES || mediaCandidates.containsKey(url)) return;
+        if (imageCandidateCount() >= MAX_IMAGE_CANDIDATES) return;
+        if (!MediaDiscovery.isDownloadableImage(url, width, height, hints, inPageChrome)) return;
+        mediaCandidates.put(url, new MediaCandidate(url, MediaDiscovery.imageLabel(url, width, height), Map.of(), true));
+        if (binding != null) updateMediaButton(binding.web.getUrl());
+    }
+    private int imageCandidateCount() { int count = 0; for (MediaCandidate candidate : mediaCandidates.values()) if (candidate.image) count++; return count; }
+    private boolean hasStreamCandidates() { return imageCandidateCount() < mediaCandidates.size(); }
     private void discoverPerformanceMedia(WebView view) {
         String script = "(function(){try{const r=new Set();performance.getEntriesByType('resource').forEach(function(e){if(e&&e.name)r.add(e.name)});return JSON.stringify(Array.from(r).slice(-200));}catch(e){return '[]';}})();";
         evalJS(view, script);
@@ -157,13 +209,20 @@ public final class BrowserFragment extends Fragment {
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.mediaDownload, description);
     }
     private void chooseMedia() {
+        // Refresh images first so ones that decoded since the last scan are offered too.
+        binding.web.removeCallbacks(imageScan);
+        discoverDocumentImages(binding.web, () -> { if (binding != null) chooseDiscoveredMedia(); });
+    }
+    private void chooseDiscoveredMedia() {
         String currentUrl = binding.web.getUrl();
-        if (mediaCandidates.isEmpty() && MediaDiscovery.isYouTubeUrl(currentUrl) && YouTubeExtractor.videoId(currentUrl) != null) { resolveYouTube(currentUrl); return; }
+        // Page images (e.g. YouTube thumbnails) must not bypass the stream extractor.
+        if (!hasStreamCandidates() && MediaDiscovery.isYouTubeUrl(currentUrl) && YouTubeExtractor.videoId(currentUrl) != null) { resolveYouTube(currentUrl); return; }
         if (FacebookExtractor.isFacebookUrl(currentUrl)) { resolveFacebook(currentUrl); return; }
         chooseCandidates();
     }
     private void chooseCandidates() {
         MediaCandidate[] candidates = mediaCandidates.values().toArray(new MediaCandidate[0]);
+        java.util.Arrays.sort(candidates, (a, b) -> Boolean.compare(a.image, b.image));
         if (candidates.length == 0) { new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.no_direct_media_title).setMessage(R.string.no_direct_media_message).setPositiveButton(android.R.string.ok, null).show(); return; }
         if (candidates.length == 1) { download(candidates[0]); return; }
         BottomSheetMediaChooserBinding chooser = BottomSheetMediaChooserBinding.inflate(getLayoutInflater());
@@ -394,12 +453,13 @@ public final class BrowserFragment extends Fragment {
         return result;
     }
 
-    private record MediaCandidate(String url, String label, Map<String, String> headers) {
-            private MediaCandidate(String url, String label, Map<String, String> headers) {
+    private record MediaCandidate(String url, String label, Map<String, String> headers, boolean image) {
+            private MediaCandidate(String url, String label, Map<String, String> headers, boolean image) {
                 this.url = url;
                 this.label = label;
                 this.headers = Map.copyOf(headers);
+                this.image = image;
             }
         }
-    @Override public void onDestroyView() { ((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { }); extractionExecutor.shutdownNow(); if (poTokenProvider != null) { poTokenProvider.close(); poTokenProvider = null; } binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
+    @Override public void onDestroyView() { binding.web.removeCallbacks(imageScan);((MainActivity) requireActivity()).setBrowserControlsReveal(false, () -> { }); extractionExecutor.shutdownNow(); if (poTokenProvider != null) { poTokenProvider.close(); poTokenProvider = null; } binding.web.stopLoading(); binding.web.clearHistory(); binding.web.removeAllViews(); binding.web.destroy(); binding = null; super.onDestroyView(); }
 }

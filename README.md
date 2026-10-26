@@ -7,9 +7,9 @@ Velocity is a Java-only Android download manager for Android 10+ (API 29). It us
 
 
 <!-- release:start (updated automatically by .github/workflows/release.yml) -->
-**Current release: v0.1.0**
+**Current release: v0.1.1**
 
-[Download velocity-0.1.0.apk](https://github.com/izzyjere/velocity/releases/download/v0.1.0/velocity-0.1.0.apk)
+[Download velocity-0.1.1.apk](https://github.com/izzyjere/velocity/releases/download/v0.1.1/velocity-0.1.1.apk)
 <!-- release:end -->
 
 Velocity can also check and install updates from **More → Check for updates**. The updater accepts only this repository's versioned release assets, verifies GitHub and published SHA-256 digests, checks package identity and signing-certificate continuity, and then uses Android's user-confirmed package installer.
